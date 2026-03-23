@@ -25,6 +25,10 @@ export default function Settings({ onBack }: Props): React.ReactElement {
   const [connectionTesting, setConnectionTesting] = useState(false)
   const [connectionMsg, setConnectionMsg] = useState('')
 
+  // Auto-save
+  const [autoSaveToVault, setAutoSaveToVault] = useState(false)
+  const [saveIncomplete, setSaveIncomplete] = useState(false)
+
   // Language
   const [transcriptionMode, setTranscriptionMode] = useState<'auto' | 'preferred'>('auto')
   const [preferredLanguages, setPreferredLanguages] = useState<string[]>([])
@@ -43,6 +47,8 @@ export default function Settings({ onBack }: Props): React.ReactElement {
       setSubfolder((c.vault_subfolder as string) ?? '')
       setTranscriptionMode((c.transcription_mode as any) ?? 'auto')
       setPreferredLanguages((c.preferred_languages as string[]) ?? [])
+      setAutoSaveToVault((c.auto_save_to_vault as boolean) ?? false)
+      setSaveIncomplete((c.save_incomplete_sessions as boolean) ?? false)
     })
   }, [])
 
@@ -240,6 +246,42 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                     {connectionTesting ? 'Testing...' : 'Test Connection'}
                   </button>
                   {connectionMsg && <span style={{ fontSize: 'var(--text-xs)', color: obsidianConnected ? 'var(--positive)' : 'var(--negative)' }}>{connectionMsg}</span>}
+                </div>
+
+                {/* Auto-save toggles */}
+                <div style={{ marginTop: 'var(--sp-4)', paddingTop: 'var(--sp-4)', borderTop: '1px solid var(--border-1)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--sp-2)' }}>
+                    <div>
+                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--ink-2)' }}>Auto-save to vault after summary</div>
+                      <div style={{ fontSize: 9, color: 'var(--ink-4)', marginTop: 2 }}>Automatically saves transcript and summary to Obsidian when a call ends</div>
+                    </div>
+                    <button
+                      onClick={async () => { const val = !autoSaveToVault; setAutoSaveToVault(val); await window.darkscribe.config.write({ auto_save_to_vault: val }) }}
+                      style={{
+                        padding: '2px 10px', background: autoSaveToVault ? 'var(--positive-subtle)' : 'var(--surface-2)',
+                        border: `1px solid ${autoSaveToVault ? 'var(--positive)' : 'var(--border-1)'}`,
+                        borderRadius: 'var(--radius-xs)', fontSize: 'var(--text-xs)', fontWeight: 600,
+                        color: autoSaveToVault ? 'var(--positive)' : 'var(--ink-4)', cursor: 'pointer'
+                      }}
+                    >{autoSaveToVault ? 'ON' : 'OFF'}</button>
+                  </div>
+                  {autoSaveToVault && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 'var(--sp-3)' }}>
+                      <div>
+                        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--ink-2)' }}>Save incomplete sessions</div>
+                        <div style={{ fontSize: 9, color: 'var(--ink-4)', marginTop: 2 }}>Also save sessions shorter than 30 seconds</div>
+                      </div>
+                      <button
+                        onClick={async () => { const val = !saveIncomplete; setSaveIncomplete(val); await window.darkscribe.config.write({ save_incomplete_sessions: val }) }}
+                        style={{
+                          padding: '2px 10px', background: saveIncomplete ? 'var(--positive-subtle)' : 'var(--surface-2)',
+                          border: `1px solid ${saveIncomplete ? 'var(--positive)' : 'var(--border-1)'}`,
+                          borderRadius: 'var(--radius-xs)', fontSize: 'var(--text-xs)', fontWeight: 600,
+                          color: saveIncomplete ? 'var(--positive)' : 'var(--ink-4)', cursor: 'pointer'
+                        }}
+                      >{saveIncomplete ? 'ON' : 'OFF'}</button>
+                    </div>
+                  )}
                 </div>
               </div>
             </>

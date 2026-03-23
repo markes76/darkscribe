@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useRealtimeTranscription } from '../hooks/useRealtimeTranscription'
 import { useContextSurfacing } from '../hooks/useContextSurfacing'
 import Transcript from './SessionView/Transcript'
@@ -34,8 +34,39 @@ export default function MainApp({ sessionId, sessionName, onEndCall, onBack }: P
     setCollectedSearches(prev => [...prev, result])
   }, [])
 
+  // Auto-save transcript to disk every 10 seconds during recording
+  const savingRef = useRef(false)
+  useEffect(() => {
+    if (!isCapturing || !sessionId) return
+
+    // Mark session as recording
+    window.darkscribe.session.saveMetadata(sessionId, { status: 'recording', participants: sessionName })
+
+    const interval = setInterval(async () => {
+      if (savingRef.current || segments.length === 0) return
+      savingRef.current = true
+      try {
+        await window.darkscribe.session.saveTranscript(sessionId, segments)
+      } catch {}
+      savingRef.current = false
+    }, 10000)
+
+    return () => {
+      clearInterval(interval)
+      // Final save on unmount
+      if (segments.length > 0) {
+        window.darkscribe.session.saveTranscript(sessionId, segments).catch(() => {})
+      }
+    }
+  }, [isCapturing, sessionId, segments.length > 0])
+
   const handleStop = async () => {
     const recording = await stopSession()
+    // Persist transcript + web searches before transitioning
+    await window.darkscribe.session.saveTranscript(sessionId, segments).catch(() => {})
+    if (collectedSearches.length > 0) {
+      await window.darkscribe.session.saveWebSearches(sessionId, collectedSearches).catch(() => {})
+    }
     onEndCall(segments, recording?.filePath ?? null, collectedSearches)
   }
 

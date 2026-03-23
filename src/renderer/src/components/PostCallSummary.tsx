@@ -142,11 +142,12 @@ interface Props {
   participants?: string
   webSearches?: WebSearchResult[]
   audioFile?: string | null
+  readOnly?: boolean
   onBack: () => void
   onNewCall: () => void
 }
 
-export default function PostCallSummary({ segments, sessionId, sessionName, participants, webSearches = [], audioFile, onBack, onNewCall }: Props): React.ReactElement {
+export default function PostCallSummary({ segments, sessionId, sessionName, participants, webSearches = [], audioFile, readOnly = false, onBack, onNewCall }: Props): React.ReactElement {
   const [summary, setSummary] = useState<CallSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -157,30 +158,65 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
   const [showShareable, setShowShareable] = useState(false)
 
   useEffect(() => {
-    if (!segments.length) { setLoading(false); setError('No segments.'); return }
     ;(async () => {
       try {
+        // REVIEW MODE: load from disk, no API call
+        if (readOnly) {
+          const savedSum = await window.darkscribe.session.loadSummary(sessionId) as CallSummary | null
+          if (savedSum) {
+            setSummary(savedSum)
+            const md = buildSummaryMarkdown(savedSum, segments, sessionName, participants, audioFile, webSearches)
+            setSummaryMarkdown(md)
+            setSaved(true)
+            // Check if already saved to vault
+            const session = await window.darkscribe.session.get(sessionId) as any
+            const lastCall = session?.calls?.[session.calls.length - 1]
+            if (lastCall?.vaultNotePath) setSavedToVault(true)
+          } else {
+            setError('No saved summary found. The session data may be incomplete.')
+          }
+          setLoading(false)
+          return
+        }
+
+        // GENERATE MODE: call OpenAI, then persist
+        if (!segments.length) { setLoading(false); setError('No segments.'); return }
+
         const key = await window.darkscribe.keychain.get('openai-api-key')
         if (!key) { setError('API key not found'); setLoading(false); return }
 
-        // Get vault subfolder prefix
         const config = await window.darkscribe.config.read()
         const prefix = (config.vault_subfolder as string) || ''
         const vp = (p: string) => prefix ? `${prefix}/${p}` : p
 
-        // Read Notetaker Skill file for summarization preferences
         let skillContent: string | undefined
         try {
           const skillResult = await window.darkscribe.vault.readNote(vp('System/Notetaker Skill.md'))
           if (skillResult.content) skillContent = skillResult.content
         } catch {}
 
-        const sum = await generateSummary(segments, key, skillContent)
+        // Load references if attached to this session
+        let refs: Array<{ title: string; content?: string }> = []
+        try {
+          const savedRefs = await window.darkscribe.session.loadReferences(sessionId) as any[] | null
+          if (savedRefs?.length) {
+            refs = savedRefs.map(r => ({ title: r.title, content: r.content }))
+          }
+        } catch {}
+
+        const sum = await generateSummary(segments, key, skillContent, refs.length > 0 ? refs : undefined)
         setSummary(sum)
 
-        // Build markdown for vault save
         const md = buildSummaryMarkdown(sum, segments, sessionName, participants, audioFile, webSearches)
         setSummaryMarkdown(md)
+
+        // Persist summary + transcript + metadata to disk
+        await window.darkscribe.session.saveSummary(sessionId, sum).catch(() => {})
+        await window.darkscribe.session.saveTranscript(sessionId, segments).catch(() => {})
+        if (webSearches.length > 0) {
+          await window.darkscribe.session.saveWebSearches(sessionId, webSearches).catch(() => {})
+        }
+        await window.darkscribe.session.saveMetadata(sessionId, { status: 'summarized', participants: sessionName }).catch(() => {})
 
         // Save call record
         await window.darkscribe.session.addCall(sessionId, {
@@ -188,12 +224,18 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
           durationMinutes: sum.durationMinutes,
           segmentCount: segments.filter(s => s.isFinal).length,
           audioFile: audioFile ?? undefined,
-          tags: sum.keyTopics.slice(0, 3)
+          tags: sum.keyTopics.slice(0, 3),
+          status: 'summarized'
         })
         setSaved(true)
+
+        // Auto-save to vault if enabled
+        if (config.auto_save_to_vault) {
+          // Will be triggered after state settles — see autoSaveEffect below
+        }
       } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
     })()
-  }, [segments, sessionId, audioFile])
+  }, [segments, sessionId, audioFile, readOnly])
 
   const [vaultError, setVaultError] = useState('')
   const [savedNotePath, setSavedNotePath] = useState('')

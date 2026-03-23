@@ -11,8 +11,9 @@ import VoiceNoteSummary from './components/VoiceNoteSummary'
 import Settings from './components/Settings'
 import type { TranscriptSegment } from './services/openai-realtime'
 import type { WebSearchResult } from './components/SearchPanel/VaultSearchPanel'
+import type { NoteReference } from './components/ReferencePanel'
 
-type AppState = 'loading' | 'onboarding' | 'home' | 'setup' | 'voice-setup' | 'call' | 'voice-call' | 'summary' | 'voice-summary' | 'settings'
+type AppState = 'loading' | 'onboarding' | 'home' | 'setup' | 'voice-setup' | 'call' | 'voice-call' | 'summary' | 'voice-summary' | 'review' | 'settings'
 
 interface ActiveSession {
   id: string
@@ -46,8 +47,11 @@ export default function App(): React.ReactElement {
     setState(prev => prev === 'voice-call' ? 'voice-summary' : 'summary')
   }, [])
 
-  const startCallFromSetup = useCallback(async (recordingName: string, participants: string) => {
+  const startCallFromSetup = useCallback(async (recordingName: string, participants: string, references?: NoteReference[]) => {
     const session = await window.darkscribe.session.create({ name: recordingName || undefined }) as any
+    if (references?.length) {
+      await window.darkscribe.session.saveReferences(session.id, references).catch(() => {})
+    }
     setActiveSession({ id: session.id, name: recordingName || undefined, participants: participants || undefined })
     setState('call')
   }, [])
@@ -91,9 +95,15 @@ export default function App(): React.ReactElement {
         <SessionList
           onNewCall={() => setState('setup')}
           onNewVoiceNote={() => setState('voice-setup')}
-          onSelectSession={(session) => {
+          onSelectSession={async (session) => {
+            // Load session data from disk and open in review mode
+            const transcript = await window.darkscribe.session.loadTranscript(session.id) as any[] | null
+            const searches = await window.darkscribe.session.loadWebSearches(session.id) as any[] | null
+            setCompletedSegments(transcript ?? [])
+            setCompletedWebSearches(searches ?? [])
+            setCompletedAudioFile(null)
             setActiveSession({ id: session.id, name: session.name })
-            setState('call')
+            setState('review')
           }}
         />
       )
@@ -116,6 +126,22 @@ export default function App(): React.ReactElement {
           participants={activeSession.participants}
           webSearches={completedWebSearches}
           audioFile={completedAudioFile}
+          onBack={() => { setActiveSession(null); setState('home') }}
+          onNewCall={() => { setActiveSession(null); setState('setup') }}
+        />
+      )
+    }
+
+    if (state === 'review' && activeSession) {
+      return (
+        <PostCallSummary
+          segments={completedSegments}
+          sessionId={activeSession.id}
+          sessionName={activeSession.name}
+          participants={activeSession.participants}
+          webSearches={completedWebSearches}
+          audioFile={completedAudioFile}
+          readOnly={true}
           onBack={() => { setActiveSession(null); setState('home') }}
           onNewCall={() => { setActiveSession(null); setState('setup') }}
         />

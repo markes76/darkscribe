@@ -44,10 +44,16 @@ export interface CallSummary {
   sentiment: SentimentAnalysis
 }
 
+export interface NoteReferenceForSummary {
+  title: string
+  content?: string
+}
+
 export async function generateSummary(
   segments: TranscriptSegment[],
   apiKey: string,
-  skillContent?: string
+  skillContent?: string,
+  references?: NoteReferenceForSummary[]
 ): Promise<CallSummary> {
   const transcript = segments
     .filter(s => s.isFinal && s.text.trim())
@@ -83,6 +89,7 @@ For sentiment: be specific, cite actual language from the transcript. Do not be 
 Example structure (abbreviated):
 {"participants":["Alice","Bob"],"keyTopics":["Budget","Timeline"],"actionItems":[{"item":"Send proposal","owner":"Alice"}],"decisions":["Approved Q3 budget"],"followUps":["Schedule review"],"overview":"Alice and Bob discussed...","sentiment":{"overallTone":"Collaborative with tension on timeline","emotionalArc":"Started warm, grew tense around deadlines, resolved positively","keyMoments":[{"topic":"Timeline","sentiment":"tense","indicator":"Bob said 'that's not realistic' twice"}],"participantDynamics":"Alice led, Bob pushed back","engagementLevel":"High throughout","topicSentiments":[{"topic":"Budget","sentiment":"positive","detail":"Both agreed quickly"}],"concerns":["Bob may not commit to the deadline"],"positiveSignals":["Alice expressed excitement about the new approach"],"risksDetected":["Unresolved disagreement on delivery date"],"recommendation":"Follow up with Bob separately on timeline concerns"}}
 ${skillContent ? `\nFollow these learned preferences:\n${skillContent}` : ''}
+${references?.length ? `\nThe user attached these reference notes for context. Use them to provide more relevant analysis. Cite connections using [[wikilinks]]:\n\n${references.map(r => `### ${r.title}\n${(r.content ?? '').substring(0, 2000)}`).join('\n\n')}` : ''}
 Return ONLY the JSON object. All fields at the top level. No wrapper keys.`
 
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {

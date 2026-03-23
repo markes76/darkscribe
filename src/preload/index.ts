@@ -70,7 +70,30 @@ const api = {
     addCall: (id: string, call: Record<string, unknown>): Promise<unknown> =>
       ipcRenderer.invoke('session:add-call', id, call),
     updateCall: (sessionId: string, callIndex: number, updates: Record<string, unknown>): Promise<unknown> =>
-      ipcRenderer.invoke('session:update-call', sessionId, callIndex, updates)
+      ipcRenderer.invoke('session:update-call', sessionId, callIndex, updates),
+    // Per-session file persistence
+    saveTranscript: (id: string, segments: unknown[]): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('session:save-transcript', id, segments),
+    loadTranscript: (id: string): Promise<unknown[] | null> =>
+      ipcRenderer.invoke('session:load-transcript', id),
+    saveSummary: (id: string, summary: unknown): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('session:save-summary', id, summary),
+    loadSummary: (id: string): Promise<unknown | null> =>
+      ipcRenderer.invoke('session:load-summary', id),
+    saveWebSearches: (id: string, searches: unknown[]): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('session:save-web-searches', id, searches),
+    loadWebSearches: (id: string): Promise<unknown[] | null> =>
+      ipcRenderer.invoke('session:load-web-searches', id),
+    saveReferences: (id: string, refs: unknown[]): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('session:save-references', id, refs),
+    loadReferences: (id: string): Promise<unknown[] | null> =>
+      ipcRenderer.invoke('session:load-references', id),
+    saveMetadata: (id: string, meta: unknown): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('session:save-metadata', id, meta),
+    loadMetadata: (id: string): Promise<unknown | null> =>
+      ipcRenderer.invoke('session:load-metadata', id),
+    recoverInterrupted: (): Promise<unknown[]> =>
+      ipcRenderer.invoke('session:recover-interrupted')
   },
   recording: {
     start: (sessionId: string): Promise<{ ok: boolean }> =>

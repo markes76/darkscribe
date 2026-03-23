@@ -1,21 +1,23 @@
 import React, { useState } from 'react'
+import ReferencePanel, { NoteReference } from './ReferencePanel'
 
 interface Props {
-  onStart: (recordingName: string, participants: string) => void
+  onStart: (recordingName: string, participants: string, references: NoteReference[]) => void
   onCancel: () => void
 }
 
 export default function CallSetup({ onStart, onCancel }: Props): React.ReactElement {
   const [recordingName, setRecordingName] = useState('')
   const [participants, setParticipants] = useState('')
+  const [references, setReferences] = useState<NoteReference[]>([])
 
   const handleStart = () => {
-    onStart(recordingName.trim(), participants.trim())
+    onStart(recordingName.trim(), participants.trim(), references)
   }
 
   return (
     <div className="page-enter" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-8)' }}>
-      <div style={{ width: 440, background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-8)', boxShadow: 'var(--shadow-md)' }}>
+      <div style={{ width: 480, background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-8)', boxShadow: 'var(--shadow-md)' }}>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', color: 'var(--ink-1)', marginBottom: 'var(--sp-2)' }}>New Call</h2>
         <p style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)', marginBottom: 'var(--sp-6)' }}>
           Name your recording and add participants. Both are optional.
@@ -37,7 +39,7 @@ export default function CallSetup({ onStart, onCancel }: Props): React.ReactElem
           />
         </div>
 
-        <div style={{ marginBottom: 'var(--sp-6)' }}>
+        <div style={{ marginBottom: 'var(--sp-4)' }}>
           <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--ink-2)', marginBottom: 4 }}>Participants</label>
           <input
             value={participants}
@@ -53,6 +55,14 @@ export default function CallSetup({ onStart, onCancel }: Props): React.ReactElem
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-4)', marginTop: 4 }}>
             Used in filenames and summary metadata. Leave empty to use timestamp only.
           </div>
+        </div>
+
+        <div style={{ marginBottom: 'var(--sp-6)' }}>
+          <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--ink-2)', marginBottom: 4 }}>Reference Notes (optional)</label>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-4)', marginBottom: 'var(--sp-2)' }}>
+            Attach Obsidian notes for context. Their content will enrich the summary.
+          </div>
+          <ReferencePanel references={references} onReferencesChange={setReferences} compact />
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--sp-3)', justifyContent: 'flex-end' }}>

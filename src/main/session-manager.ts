@@ -3,6 +3,8 @@ import path from 'path'
 import { app, ipcMain } from 'electron'
 import crypto from 'crypto'
 
+export type SessionStatus = 'recording' | 'interrupted' | 'summarized' | 'complete'
+
 export interface CallRecord {
   date: string
   durationMinutes?: number
@@ -13,6 +15,8 @@ export interface CallRecord {
   audioFile?: string
   vaultNotePath?: string
   originalSummary?: string
+  status?: SessionStatus
+  referenceCount?: number
 }
 
 export interface Session {
@@ -110,6 +114,95 @@ export function getSessionDir(id: string): string {
   return dir
 }
 
+// ─── Per-session file I/O ─────────────────────────────────────────────
+
+function sessionFilePath(id: string, filename: string): string {
+  return path.join(sessionDir(id), filename)
+}
+
+function writeSessionFile(id: string, filename: string, data: unknown): void {
+  const dir = sessionDir(id)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(sessionFilePath(id, filename), JSON.stringify(data, null, 2))
+}
+
+function readSessionFile<T>(id: string, filename: string): T | null {
+  try {
+    const filePath = sessionFilePath(id, filename)
+    if (!fs.existsSync(filePath)) return null
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+export function saveTranscript(id: string, segments: unknown[]): void {
+  writeSessionFile(id, 'transcript.json', segments)
+}
+
+export function loadTranscript(id: string): unknown[] | null {
+  return readSessionFile<unknown[]>(id, 'transcript.json')
+}
+
+export function saveSummary(id: string, summary: unknown): void {
+  writeSessionFile(id, 'summary.json', summary)
+}
+
+export function loadSummary(id: string): unknown | null {
+  return readSessionFile(id, 'summary.json')
+}
+
+export function saveWebSearches(id: string, searches: unknown[]): void {
+  writeSessionFile(id, 'web-searches.json', searches)
+}
+
+export function loadWebSearches(id: string): unknown[] | null {
+  return readSessionFile<unknown[]>(id, 'web-searches.json')
+}
+
+export function saveReferences(id: string, refs: unknown[]): void {
+  writeSessionFile(id, 'references.json', refs)
+}
+
+export function loadReferences(id: string): unknown[] | null {
+  return readSessionFile<unknown[]>(id, 'references.json')
+}
+
+export function saveMetadata(id: string, meta: unknown): void {
+  writeSessionFile(id, 'metadata.json', meta)
+}
+
+export function loadMetadata(id: string): unknown | null {
+  return readSessionFile(id, 'metadata.json')
+}
+
+export function recoverInterrupted(): Array<{ sessionId: string; session: Session }> {
+  const sessions = readSessions()
+  const interrupted: Array<{ sessionId: string; session: Session }> = []
+
+  for (const session of sessions) {
+    const meta = readSessionFile<{ status?: string }>(session.id, 'metadata.json')
+    if (meta?.status === 'recording') {
+      // Mark as interrupted
+      writeSessionFile(session.id, 'metadata.json', { ...meta, status: 'interrupted' })
+      // Update call record status if exists
+      const allSessions = readSessions()
+      const idx = allSessions.findIndex(s => s.id === session.id)
+      if (idx !== -1) {
+        const lastCall = allSessions[idx].calls[allSessions[idx].calls.length - 1]
+        if (lastCall) lastCall.status = 'interrupted'
+        allSessions[idx].updatedAt = new Date().toISOString()
+        writeSessions(allSessions)
+      }
+      interrupted.push({ sessionId: session.id, session })
+    }
+  }
+
+  return interrupted
+}
+
+// ─── IPC Setup ─────────────────────────────────────────────────────────
+
 export function setupSessionIpc(): void {
   ipcMain.handle('session:create', (_e, data) => createSession(data))
   ipcMain.handle('session:list', () => listSessions())
@@ -127,4 +220,17 @@ export function setupSessionIpc(): void {
     writeSessions(sessions)
     return sessions[idx]
   })
+
+  // Per-session file persistence
+  ipcMain.handle('session:save-transcript', (_e, id: string, segments: unknown[]) => { saveTranscript(id, segments); return { ok: true } })
+  ipcMain.handle('session:load-transcript', (_e, id: string) => loadTranscript(id))
+  ipcMain.handle('session:save-summary', (_e, id: string, summary: unknown) => { saveSummary(id, summary); return { ok: true } })
+  ipcMain.handle('session:load-summary', (_e, id: string) => loadSummary(id))
+  ipcMain.handle('session:save-web-searches', (_e, id: string, searches: unknown[]) => { saveWebSearches(id, searches); return { ok: true } })
+  ipcMain.handle('session:load-web-searches', (_e, id: string) => loadWebSearches(id))
+  ipcMain.handle('session:save-references', (_e, id: string, refs: unknown[]) => { saveReferences(id, refs); return { ok: true } })
+  ipcMain.handle('session:load-references', (_e, id: string) => loadReferences(id))
+  ipcMain.handle('session:save-metadata', (_e, id: string, meta: unknown) => { saveMetadata(id, meta); return { ok: true } })
+  ipcMain.handle('session:load-metadata', (_e, id: string) => loadMetadata(id))
+  ipcMain.handle('session:recover-interrupted', () => recoverInterrupted())
 }

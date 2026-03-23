@@ -8,6 +8,9 @@ dist/
 # Swift build artifacts
 swift/AudioCapture/.build/
 
+# Compiled AudioCapture binary (built via npm run build:swift)
+resources/AudioCapture
+
 # macOS
 .DS_Store
 *.dmg
