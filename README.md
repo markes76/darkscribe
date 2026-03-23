@@ -37,12 +37,21 @@ It also surfaces relevant context from your past notes during live calls, so you
 - Generates "thought summaries" instead of meeting summaries: key ideas, questions to explore, connections, raw gems
 - Saves to configurable Notes/ subfolders (Ideas, Research, Brainstorm, Journal)
 
+### Session Persistence (Never Lose Data)
+- **Auto-save to disk** — transcripts save every 10 seconds during recording. Summaries, web searches, and references persist immediately on generation
+- **Crash recovery** — if the app crashes mid-recording, restart and find your partial transcript waiting
+- **Review mode** — reopen any past session from the home screen. Full summary loads from disk without re-calling the API
+- **Session status** — color-coded badges: green (saved to vault), blue (summarized), red (interrupted)
+- **Auto-save to Obsidian** — optional toggle in Settings. When enabled, transcripts and summaries save to your vault automatically after generation
+- **Note references** — attach Obsidian notes as context before or during a call. Reference content enriches the GPT-4o summary prompt. Saved as [[wikilinks]] in frontmatter
+
 ### Obsidian Vault Integration
 - All notes saved as markdown with YAML frontmatter — transcripts, summaries, voice notes, web search references
-- **Context surfacing** — during live calls, Darkscribe automatically extracts entities from the conversation and searches your vault for related past notes, surfacing them in a side panel
+- **Context surfacing** — during live calls, Darkscribe automatically extracts entities from the conversation and searches your vault for related past notes, surfacing them in a side panel with "Open in Obsidian" links
+- **Sticky context cards** — surfaced notes stay visible until manually dismissed
 - **Vault search** — manual search across your Obsidian vault during calls
 - **Web search** — Tavily + OpenAI fallback, with "Add to Summary" to include web results in your call summary
-- **Obsidian deep links** — "Open in Obsidian" buttons on context cards and saved notes
+- **Obsidian deep links** — "Open in Obsidian" buttons on context cards, saved notes, and session list entries
 
 ### Self-Teaching Notetaker
 - A persistent **Notetaker Skill file** (`System/Notetaker Skill.md`) that Darkscribe reads before every operation
@@ -214,6 +223,8 @@ All settings are in **Settings** within the app:
 | Darkscribe Subfolder | Where notes are stored (e.g., "Work/Darkscribe"). |
 | Transcription Language | Auto-detect or set preferred languages. |
 | Context Surfacing | Toggle on/off, interval: 15s/30s/60s. |
+| Auto-save to Vault | Automatically save to Obsidian after summary (default: off). |
+| Save Incomplete Sessions | Also auto-save sessions shorter than 30 seconds (default: off). |
 
 ## Development
 

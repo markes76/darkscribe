@@ -171,7 +171,10 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
             // Check if already saved to vault
             const session = await window.darkscribe.session.get(sessionId) as any
             const lastCall = session?.calls?.[session.calls.length - 1]
-            if (lastCall?.vaultNotePath) setSavedToVault(true)
+            if (lastCall?.vaultNotePath) {
+              setSavedToVault(true)
+              setSavedNotePath(lastCall.vaultNotePath)
+            }
           } else {
             setError('No saved summary found. The session data may be incomplete.')
           }
@@ -231,7 +234,41 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
 
         // Auto-save to vault if enabled
         if (config.auto_save_to_vault) {
-          // Will be triggered after state settles — see autoSaveEffect below
+          try {
+            const vaultStatus = await window.darkscribe.vault.status()
+            if (vaultStatus.connected) {
+              const baseName = buildFilename(sum.dateTime, sessionName)
+              const notePath = vp(`Calls/Summaries/${baseName}.md`)
+              const saveResult = await window.darkscribe.vault.saveNote(notePath, md)
+              if (saveResult.ok !== false) {
+                // Save transcript too
+                const txPath = vp(`Calls/Transcripts/${baseName}.md`)
+                const txContent = buildTranscriptMarkdown(segments, sum, sessionName, participants, audioFile)
+                await window.darkscribe.vault.saveNote(txPath, txContent).catch(() => {})
+
+                // Update call record with vault path
+                const sess = await window.darkscribe.session.get(sessionId) as any
+                if (sess) {
+                  const ci = sess.calls.length - 1
+                  if (ci >= 0) {
+                    await window.darkscribe.session.updateCall(sessionId, ci, {
+                      vaultNotePath: notePath,
+                      originalSummary: md,
+                      status: 'complete'
+                    })
+                  }
+                }
+                await window.darkscribe.session.saveMetadata(sessionId, { status: 'complete' }).catch(() => {})
+                setSavedToVault(true)
+                setSavedNotePath(notePath)
+                console.log('[AutoSave] Saved to vault:', notePath)
+              }
+            } else {
+              console.log('[AutoSave] Vault not connected, skipping auto-save')
+            }
+          } catch (autoErr) {
+            console.error('[AutoSave] Failed:', (autoErr as Error).message)
+          }
         }
       } catch (e) { setError((e as Error).message) } finally { setLoading(false) }
     })()
