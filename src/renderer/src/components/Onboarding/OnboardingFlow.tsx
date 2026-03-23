@@ -4,7 +4,7 @@ interface Props {
   onComplete: () => void
 }
 
-type Step = 'welcome' | 'api-key' | 'tavily-key' | 'obsidian-connection' | 'obsidian-subfolder' | 'permissions' | 'done'
+type Step = 'welcome' | 'api-key' | 'tavily-key' | 'obsidian-connection' | 'obsidian-subfolder' | 'permissions' | 'language' | 'done'
 
 export default function OnboardingFlow({ onComplete }: Props): React.ReactElement {
   const [step, setStep] = useState<Step>('welcome')
@@ -21,12 +21,52 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
   // Obsidian connection
   const [obsidianApiKey, setObsidianApiKey] = useState('')
   const [obsidianPort, setObsidianPort] = useState('27124')
-  const [obsidianVaultName, setObsidianVaultName] = useState('Mark Mind')
+  const [obsidianVaultName, setObsidianVaultName] = useState('')
   const [connectionTesting, setConnectionTesting] = useState(false)
   const [connectionResult, setConnectionResult] = useState<{ ok: boolean; fileCount?: number; error?: string } | null>(null)
 
   // Subfolder
   const [subfolder, setSubfolder] = useState('Work/Darkscribe')
+
+  const browseForFolder = async () => {
+    try {
+      const result = await window.darkscribe.dialog.selectVaultFolder(obsidianVaultName || undefined)
+      if (result) {
+        setSubfolder(result.relativePath || '')
+      }
+    } catch (e) {
+      console.error('Browse folder failed:', e)
+    }
+  }
+
+  // Language
+  const [langMode, setLangMode] = useState<'auto' | 'preferred'>('auto')
+  const [selectedLangs, setSelectedLangs] = useState<string[]>([])
+
+  const LANGUAGES = [
+    { code: 'en', name: 'English' }, { code: 'he', name: 'Hebrew' },
+    { code: 'es', name: 'Spanish' }, { code: 'fr', name: 'French' },
+    { code: 'de', name: 'German' }, { code: 'ar', name: 'Arabic' },
+    { code: 'zh', name: 'Chinese' }, { code: 'ja', name: 'Japanese' },
+    { code: 'ko', name: 'Korean' }, { code: 'pt', name: 'Portuguese' },
+    { code: 'ru', name: 'Russian' }, { code: 'hi', name: 'Hindi' },
+    { code: 'it', name: 'Italian' }, { code: 'nl', name: 'Dutch' },
+    { code: 'pl', name: 'Polish' }, { code: 'tr', name: 'Turkish' }
+  ]
+
+  const toggleLang = (code: string) => {
+    setSelectedLangs(prev =>
+      prev.includes(code) ? prev.filter(c => c !== code) : prev.length < 3 ? [...prev, code] : prev
+    )
+  }
+
+  const saveLanguageAndNext = async () => {
+    await window.darkscribe.config.write({
+      transcription_mode: langMode,
+      preferred_languages: langMode === 'preferred' ? selectedLangs : []
+    })
+    setStep('done')
+  }
 
   // Permissions
   const [permStatus, setPermStatus] = useState({ mic: false, screen: false })
@@ -175,6 +215,30 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
           Darkscribe connects to Obsidian via its <b>Local REST API</b> plugin. Make sure Obsidian is open with the plugin enabled.
         </p>
 
+        {/* Setup guide — collapsed by default */}
+        <details style={{ width: 420, textAlign: 'left', marginBottom: 'var(--sp-2)' }}>
+          <summary style={{ cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--primary)', padding: 'var(--sp-1) 0' }}>
+            First time? Setup guide
+          </summary>
+          <div style={{ padding: 'var(--sp-3)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginTop: 'var(--sp-1)', fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.8 }}>
+            <ol style={{ paddingLeft: 18, margin: 0 }}>
+              <li>Open Obsidian with your vault</li>
+              <li>Go to <b>Settings</b> (gear icon) → <b>Community plugins</b></li>
+              <li>If disabled, click <b>"Turn on community plugins"</b></li>
+              <li>Click <b>Browse</b> and search for <b>"Local REST API"</b></li>
+              <li>Click <b>Install</b>, then <b>Enable</b></li>
+              <li>Go back to Settings → scroll to <b>Local REST API</b></li>
+              <li>Toggle ON <b>"Enable Non-Encrypted (HTTP) Server"</b></li>
+              <li>Copy the <b>API Key</b> shown at the top</li>
+              <li>Note the <b>port number</b> (usually 27123 or 27124)</li>
+              <li>Paste both below and click <b>Test Connection</b></li>
+            </ol>
+            <button onClick={() => window.darkscribe.shell.openUrl('https://github.com/coddingtonbear/obsidian-local-rest-api')} style={{ marginTop: 8, padding: 0, background: 'none', border: 'none', color: 'var(--primary)', fontSize: 'var(--text-xs)', cursor: 'pointer', textDecoration: 'underline' }}>
+              Plugin documentation →
+            </button>
+          </div>
+        </details>
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', width: 380 }}>
           <div>
             <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--ink-2)', marginBottom: 4, textAlign: 'left' }}>API Key (from plugin settings)</label>
@@ -233,9 +297,13 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
       <div style={container}>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', color: 'var(--ink-1)' }}>Darkscribe Folder</h2>
         <p style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)', maxWidth: 440 }}>
-          Where in your vault should Darkscribe store notes? Leave as-is or change to your preferred location.
+          Where in your vault should Darkscribe store notes? Type a path or browse your vault.
         </p>
-        <input value={subfolder} onChange={e => setSubfolder(e.target.value)} placeholder="Work/Darkscribe" style={inputStyle} />
+        <div style={{ display: 'flex', gap: 'var(--sp-2)', width: 380 }}>
+          <input value={subfolder} onChange={e => setSubfolder(e.target.value)} placeholder="Work/Darkscribe" style={{ ...inputStyle, flex: 1 }} />
+          <button onClick={browseForFolder} style={btnSecondary}>Browse</button>
+        </div>
+
         <div style={{ color: 'var(--ink-4)', fontSize: 'var(--text-xs)', maxWidth: 400 }}>
           Transcripts, summaries, and references will be saved under this folder. Directories are created automatically.
         </div>
@@ -269,7 +337,54 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
             )}
           </div>
         </div>
-        <button onClick={() => { checkPermissions(); setStep('done') }} style={btnPrimary}>Continue</button>
+        <button onClick={() => { checkPermissions(); setStep('language') }} style={btnPrimary}>Continue</button>
+      </div>
+    )
+  }
+
+  if (step === 'language') {
+    return (
+      <div style={container}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', color: 'var(--ink-1)' }}>Transcription Language</h2>
+        <p style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)', maxWidth: 420 }}>
+          What languages do you speak during calls? You can change this anytime in Settings.
+        </p>
+
+        <div style={{ display: 'flex', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
+          <button onClick={() => setLangMode('auto')} style={{
+            padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
+            background: langMode === 'auto' ? 'var(--primary)' : 'var(--surface-raised)', color: langMode === 'auto' ? 'white' : 'var(--ink-2)',
+            border: langMode === 'auto' ? 'none' : '1px solid var(--border-1)'
+          }}>Auto-detect</button>
+          <button onClick={() => setLangMode('preferred')} style={{
+            padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
+            background: langMode === 'preferred' ? 'var(--primary)' : 'var(--surface-raised)', color: langMode === 'preferred' ? 'white' : 'var(--ink-2)',
+            border: langMode === 'preferred' ? 'none' : '1px solid var(--border-1)'
+          }}>Choose Languages</button>
+        </div>
+
+        {langMode === 'preferred' && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', maxWidth: 420, justifyContent: 'center' }}>
+            {LANGUAGES.map(lang => {
+              const selected = selectedLangs.includes(lang.code)
+              return (
+                <button key={lang.code} onClick={() => toggleLang(lang.code)} style={{
+                  padding: '6px 14px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
+                  background: selected ? 'var(--primary-subtle)' : 'var(--surface-raised)',
+                  color: selected ? 'var(--primary)' : 'var(--ink-3)',
+                  border: `1px solid ${selected ? 'var(--primary)' : 'var(--border-1)'}`
+                }}>{lang.name}</button>
+              )
+            })}
+            {selectedLangs.length >= 3 && (
+              <div style={{ width: '100%', fontSize: 'var(--text-xs)', color: 'var(--ink-4)', textAlign: 'center', marginTop: 4 }}>
+                Maximum 3 languages
+              </div>
+            )}
+          </div>
+        )}
+
+        <button onClick={saveLanguageAndNext} style={btnPrimary}>Continue</button>
       </div>
     )
   }

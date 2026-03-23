@@ -36,6 +36,13 @@ function createWindow(): void {
     }
   })
 
+  // Enable DevTools via keyboard shortcut (Cmd+Option+I)
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.meta && input.alt && input.key === 'i') {
+      mainWindow?.webContents.toggleDevTools()
+    }
+  })
+
   // Inject OpenAI auth headers for WebSocket connections
   session.defaultSession.webRequest.onBeforeSendHeaders(
     { urls: ['wss://api.openai.com/*', 'https://api.openai.com/*'] },

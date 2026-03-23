@@ -29,7 +29,9 @@ const api = {
     getTheme: (): Promise<'light' | 'dark' | 'system'> => ipcRenderer.invoke('app:get-theme')
   },
   dialog: {
-    selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:select-directory')
+    selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:select-directory'),
+    selectVaultFolder: (vaultName?: string): Promise<{ absolutePath: string; relativePath: string; vaultRoot: string } | null> =>
+      ipcRenderer.invoke('dialog:select-vault-folder', vaultName)
   },
   audio: {
     start: (): Promise<{ ok?: boolean; error?: string }> => ipcRenderer.invoke('audio:start'),

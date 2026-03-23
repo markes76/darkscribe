@@ -219,7 +219,20 @@ export default function Settings({ onBack }: Props): React.ReactElement {
 
                 <div style={{ marginBottom: 'var(--sp-3)' }}>
                   <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--ink-2)', marginBottom: 4 }}>Darkscribe Subfolder</label>
-                  <input value={subfolder} onChange={e => setSubfolder(e.target.value)} onBlur={saveObsidianSettings} placeholder="Work/Darkscribe" style={inputStyle} />
+                  <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+                    <input value={subfolder} onChange={e => setSubfolder(e.target.value)} onBlur={saveObsidianSettings} placeholder="Work/Darkscribe" style={{ ...inputStyle, flex: 1 }} />
+                    <button onClick={async () => {
+                      try {
+                        const result = await window.darkscribe.dialog.selectVaultFolder(obsidianVaultName || undefined)
+                        if (result) {
+                          setSubfolder(result.relativePath || '')
+                          saveObsidianSettings()
+                        }
+                      } catch (e) {
+                        console.error('Browse folder failed:', e)
+                      }
+                    }} style={btnSm}>Browse</button>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center' }}>

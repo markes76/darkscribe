@@ -41,7 +41,7 @@ function rmsEnergy(buffer: ArrayBuffer): number {
   return Math.sqrt(sum / samples.length)
 }
 
-const SILENCE_THRESHOLD = 200
+const SILENCE_THRESHOLD = 5  // Very low — system audio via Bluetooth/AirPods is quiet
 
 let idCounter = 0
 function nextId(prefix: string): string {
@@ -56,14 +56,16 @@ class RealtimeChannel {
   private pendingSegments = new Map<string, TranscriptSegment>()
   private channel: 'mic' | 'sys'
   private languages: string[]
+  private vocabularyHints: string
   private onTranscript: TranscriptCallback
   private onStatus: StatusCallback
 
-  constructor(channel: 'mic' | 'sys', onTranscript: TranscriptCallback, onStatus: StatusCallback, languages: string[] = []) {
+  constructor(channel: 'mic' | 'sys', onTranscript: TranscriptCallback, onStatus: StatusCallback, languages: string[] = [], vocabularyHints: string = '') {
     this.channel = channel
     this.onTranscript = onTranscript
     this.onStatus = onStatus
     this.languages = languages
+    this.vocabularyHints = vocabularyHints
   }
 
   connect(): void {
@@ -79,6 +81,7 @@ class RealtimeChannel {
       this.retryCount = 0
       this.onStatus('connected', `${this.channel} channel`)
       this.sendSessionConfig()
+      this.startPeriodicCommit()
     }
 
     this.ws.onmessage = (e: MessageEvent) => {
@@ -88,6 +91,7 @@ class RealtimeChannel {
     this.ws.onerror = () => this.onStatus('error', `${this.channel} WebSocket error`)
 
     this.ws.onclose = () => {
+      this.stopPeriodicCommit()
       if (!this.stopped) this.scheduleReconnect()
       else this.onStatus('disconnected', `${this.channel} channel`)
     }
@@ -99,27 +103,94 @@ class RealtimeChannel {
       transcriptionConfig.language = this.languages[0]
     }
 
+    // Build transcription instructions for higher quality output
+    const langNote = this.languages.length > 1
+      ? `The speakers may switch between ${this.languages.join(', ')}. Transcribe in the language being spoken. Do not translate.`
+      : ''
+
+    const channelNote = this.channel === 'sys'
+      ? 'This audio is from remote participants in a video/phone call (system audio capture).'
+      : 'This audio is from local participants captured via microphone.'
+
+    const vocabNote = this.vocabularyHints
+      ? `\n\nKnown vocabulary, names, and terms to watch for:\n${this.vocabularyHints}`
+      : ''
+
+    const instructions = `You are a high-accuracy meeting transcription system called Darkscribe. ${channelNote}
+
+Transcription rules:
+- Transcribe verbatim — capture exactly what is said, word for word.
+- Preserve all proper nouns, company names, product names, technical terms, and acronyms with correct spelling and capitalization.
+- Use proper punctuation, capitalization, and paragraph breaks.
+- Numbers: spell out one through nine, use digits for 10 and above. Use digits for all measurements, dates, and financial figures.
+- Do not censor, paraphrase, or summarize. Do not add commentary.
+- If a word is unclear, transcribe your best interpretation rather than omitting it.
+- Preserve filler words (um, uh, like) only when they carry conversational meaning (hesitation, emphasis). Omit routine fillers.
+${langNote}${vocabNote}`
+
+    // Different VAD settings per channel:
+    // - Mic: longer silence tolerance (speakers pause to think)
+    // - System: shorter silence tolerance (break up continuous remote speech faster)
+    const vadConfig = this.channel === 'sys'
+      ? { type: 'server_vad' as const, threshold: 0.3, prefix_padding_ms: 300, silence_duration_ms: 400 }
+      : { type: 'server_vad' as const, threshold: 0.45, prefix_padding_ms: 500, silence_duration_ms: 800 }
+
     this.send({
       type: 'session.update',
       session: {
         modalities: ['text'],
+        instructions,
         input_audio_format: 'pcm16',
         input_audio_transcription: transcriptionConfig,
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500
-        }
+        turn_detection: vadConfig
       }
     })
   }
 
+  private sysAudioLogCounter = 0
+  private lastCommitTime = 0
+  private hasSentAudioSinceCommit = false
+  private commitInterval: ReturnType<typeof setInterval> | null = null
+
+  // For system audio: periodically commit the buffer to force transcription
+  // even when VAD doesn't detect a clean silence boundary
+  private startPeriodicCommit(): void {
+    if (this.channel !== 'sys' || this.commitInterval) return
+    this.lastCommitTime = Date.now()
+    this.commitInterval = setInterval(() => {
+      if (this.hasSentAudioSinceCommit && this.ws?.readyState === WebSocket.OPEN) {
+        console.log(`[Realtime:sys] Forcing audio commit after ${((Date.now() - this.lastCommitTime) / 1000).toFixed(1)}s`)
+        this.send({ type: 'input_audio_buffer.commit' })
+        this.hasSentAudioSinceCommit = false
+        this.lastCommitTime = Date.now()
+        // Capture the speech start time for the NEXT segment
+        this.speechStartTime = Date.now()
+      }
+    }, 8000) // Force commit every 8 seconds
+  }
+
+  private stopPeriodicCommit(): void {
+    if (this.commitInterval) {
+      clearInterval(this.commitInterval)
+      this.commitInterval = null
+    }
+  }
+
   appendAudio(buffer: ArrayBuffer): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return
-    if (this.channel === 'sys' && rmsEnergy(buffer) < SILENCE_THRESHOLD) return
+    if (this.channel === 'sys') {
+      const rms = rmsEnergy(buffer)
+      this.sysAudioLogCounter++
+      if (this.sysAudioLogCounter % 50 === 0) {
+        console.log(`[Realtime:sys] RMS energy: ${rms.toFixed(0)} (threshold: ${SILENCE_THRESHOLD})`)
+      }
+      if (rms < SILENCE_THRESHOLD) return
+      this.hasSentAudioSinceCommit = true
+    }
     this.send({ type: 'input_audio_buffer.append', audio: base64FromInt16(buffer) })
   }
+
+  private speechStartTime: number | null = null
 
   private handleEvent(event: Record<string, unknown>): void {
     const type = event.type as string
@@ -132,14 +203,27 @@ class RealtimeChannel {
     const speakerColor = this.channel === 'mic' ? '#2563eb' : '#059669'
 
     switch (type) {
+      // Track when VAD detects speech start — this is the true timestamp
+      case 'input_audio_buffer.speech_started': {
+        this.speechStartTime = Date.now()
+        break
+      }
+      case 'input_audio_buffer.speech_stopped': {
+        // Speech ended, timestamp is preserved for the next transcript
+        break
+      }
+
       case 'conversation.item.input_audio_transcription.delta': {
         const itemId = event.item_id as string
         const delta = event.delta as string
         if (!delta) break
         let seg = this.pendingSegments.get(itemId)
         if (!seg) {
-          seg = { id: nextId(this.channel), speaker: this.channel, speakerName, speakerColor, text: '', isFinal: false, timestamp: Date.now() }
+          // Use the speech start time if available, otherwise fall back to now
+          const timestamp = this.speechStartTime ?? Date.now()
+          seg = { id: nextId(this.channel), speaker: this.channel, speakerName, speakerColor, text: '', isFinal: false, timestamp }
           this.pendingSegments.set(itemId, seg)
+          this.speechStartTime = null // Consumed
         }
         seg.text += delta
         this.onTranscript({ ...seg })
@@ -180,6 +264,7 @@ class RealtimeChannel {
 
   disconnect(): void {
     this.stopped = true
+    this.stopPeriodicCommit()
     if (this.retryTimeout) { clearTimeout(this.retryTimeout); this.retryTimeout = null }
     if (this.ws) { this.ws.close(); this.ws = null }
     this.pendingSegments.clear()
@@ -192,13 +277,15 @@ export class RealtimeTranscriptionService {
   private onTranscript: TranscriptCallback
   private onStatus: StatusCallback
   private languages: string[]
+  private vocabularyHints: string
   private micConnected = false
   private sysConnected = false
 
-  constructor(onTranscript: TranscriptCallback, onStatus: StatusCallback, languages: string[] = []) {
+  constructor(onTranscript: TranscriptCallback, onStatus: StatusCallback, languages: string[] = [], vocabularyHints: string = '') {
     this.onTranscript = onTranscript
     this.onStatus = onStatus
     this.languages = languages
+    this.vocabularyHints = vocabularyHints
   }
 
   connect(): void {
@@ -208,12 +295,12 @@ export class RealtimeTranscriptionService {
     this.micChannel = new RealtimeChannel('mic', this.onTranscript, (status) => {
       if (status === 'connected') this.micConnected = true
       this.updateOverallStatus()
-    }, this.languages)
+    }, this.languages, this.vocabularyHints)
 
     this.sysChannel = new RealtimeChannel('sys', this.onTranscript, (status) => {
       if (status === 'connected') this.sysConnected = true
       this.updateOverallStatus()
-    }, this.languages)
+    }, this.languages, this.vocabularyHints)
 
     this.onStatus('connecting', 'Opening dual channels...')
     this.micChannel.connect()

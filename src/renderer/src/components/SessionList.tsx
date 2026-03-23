@@ -10,6 +10,7 @@ interface Session {
 
 interface Props {
   onNewCall: () => void
+  onNewVoiceNote?: () => void
   onSelectSession: (session: Session) => void
 }
 
@@ -22,7 +23,7 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-export default function SessionList({ onNewCall, onSelectSession }: Props): React.ReactElement {
+export default function SessionList({ onNewCall, onNewVoiceNote, onSelectSession }: Props): React.ReactElement {
   const [sessions, setSessions] = useState<Session[]>([])
   const [hoveredId, setHoveredId] = useState<string | null>(null)
 
@@ -44,16 +45,30 @@ export default function SessionList({ onNewCall, onSelectSession }: Props): Reac
             <h1 style={{ fontSize: 'var(--text-2xl)', color: 'var(--ink-1)', marginBottom: 'var(--sp-1)' }}>Darkscribe</h1>
             <p style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)' }}>Call transcription & notes</p>
           </div>
-          <button
-            onClick={onNewCall}
-            style={{
-              padding: '10px 24px', background: 'var(--primary)', color: 'white',
-              border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700,
-              fontSize: 'var(--text-sm)', cursor: 'pointer', boxShadow: 'var(--shadow-sm)'
-            }}
-          >
-            New Call
-          </button>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+            {onNewVoiceNote && (
+              <button
+                onClick={onNewVoiceNote}
+                style={{
+                  padding: '10px 20px', background: 'var(--purple-subtle)', color: 'var(--purple)',
+                  border: '1px solid var(--purple)', borderRadius: 'var(--radius-md)', fontWeight: 700,
+                  fontSize: 'var(--text-sm)', cursor: 'pointer'
+                }}
+              >
+                Voice Note
+              </button>
+            )}
+            <button
+              onClick={onNewCall}
+              style={{
+                padding: '10px 24px', background: 'var(--primary)', color: 'white',
+                border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700,
+                fontSize: 'var(--text-sm)', cursor: 'pointer', boxShadow: 'var(--shadow-sm)'
+              }}
+            >
+              New Call
+            </button>
+          </div>
         </div>
 
         {sessions.length === 0 ? (

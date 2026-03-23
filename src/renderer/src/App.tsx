@@ -2,16 +2,27 @@ import React, { useEffect, useState, useCallback } from 'react'
 import OnboardingFlow from './components/Onboarding/OnboardingFlow'
 import TopNav from './components/TopNav'
 import SessionList from './components/SessionList'
+import CallSetup from './components/CallSetup'
+import VoiceNoteSetup from './components/VoiceNoteSetup'
+import type { VoiceNoteCategory } from './components/VoiceNoteSetup'
 import MainApp from './components/MainApp'
 import PostCallSummary from './components/PostCallSummary'
+import VoiceNoteSummary from './components/VoiceNoteSummary'
 import Settings from './components/Settings'
 import type { TranscriptSegment } from './services/openai-realtime'
+import type { WebSearchResult } from './components/SearchPanel/VaultSearchPanel'
 
-type AppState = 'loading' | 'onboarding' | 'home' | 'call' | 'summary' | 'settings'
+type AppState = 'loading' | 'onboarding' | 'home' | 'setup' | 'voice-setup' | 'call' | 'voice-call' | 'summary' | 'voice-summary' | 'settings'
 
 interface ActiveSession {
   id: string
   name?: string
+  participants?: string
+}
+
+interface VoiceNoteState {
+  topic: string
+  category: VoiceNoteCategory
 }
 
 export default function App(): React.ReactElement {
@@ -19,35 +30,40 @@ export default function App(): React.ReactElement {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null)
   const [completedSegments, setCompletedSegments] = useState<TranscriptSegment[]>([])
   const [completedAudioFile, setCompletedAudioFile] = useState<string | null>(null)
+  const [completedWebSearches, setCompletedWebSearches] = useState<WebSearchResult[]>([])
+  const [voiceNote, setVoiceNote] = useState<VoiceNoteState>({ topic: '', category: 'Ideas' })
 
   useEffect(() => {
     window.darkscribe.config.read().then((config) => {
-      if (config.onboarding_complete) {
-        setState('home')
-      } else {
-        setState('onboarding')
-      }
+      setState(config.onboarding_complete ? 'home' : 'onboarding')
     })
   }, [])
 
-  const handleCallEnd = useCallback((segments: TranscriptSegment[], audioFile: string | null) => {
+  const handleCallEnd = useCallback((segments: TranscriptSegment[], audioFile: string | null, webSearches?: WebSearchResult[]) => {
     setCompletedSegments(segments)
     setCompletedAudioFile(audioFile)
-    setState('summary')
+    setCompletedWebSearches(webSearches ?? [])
+    setState(prev => prev === 'voice-call' ? 'voice-summary' : 'summary')
+  }, [])
+
+  const startCallFromSetup = useCallback(async (recordingName: string, participants: string) => {
+    const session = await window.darkscribe.session.create({ name: recordingName || undefined }) as any
+    setActiveSession({ id: session.id, name: recordingName || undefined, participants: participants || undefined })
+    setState('call')
+  }, [])
+
+  const startVoiceNote = useCallback(async (topic: string, category: VoiceNoteCategory) => {
+    setVoiceNote({ topic, category })
+    const session = await window.darkscribe.session.create({ name: topic || 'Voice Note' }) as any
+    setActiveSession({ id: session.id, name: topic || undefined })
+    setState('voice-call')
   }, [])
 
   if (state === 'loading') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 'var(--radius-md)',
-          background: 'var(--primary-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <div style={{
-            width: 20, height: 20, borderRadius: '50%',
-            border: '2px solid var(--primary)', borderTopColor: 'transparent',
-            animation: 'spin 0.8s linear infinite'
-          }} />
+        <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-md)', background: 'var(--primary-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--primary)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
         </div>
         <div style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)', fontWeight: 500 }}>Loading Darkscribe...</div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -56,14 +72,7 @@ export default function App(): React.ReactElement {
   }
 
   if (state === 'onboarding') {
-    return (
-      <OnboardingFlow
-        onComplete={() => {
-          window.darkscribe.config.write({ onboarding_complete: true })
-          setState('home')
-        }}
-      />
-    )
+    return <OnboardingFlow onComplete={() => { window.darkscribe.config.write({ onboarding_complete: true }); setState('home') }} />
   }
 
   const handleNav = (tab: string) => {
@@ -71,7 +80,8 @@ export default function App(): React.ReactElement {
     else if (tab === 'settings') setState('settings')
   }
 
-  const activeTab: 'home' | 'call' | 'settings' = state === 'home' ? 'home' : state === 'settings' ? 'settings' : 'call'
+  const isRecording = (state === 'call' || state === 'voice-call') && !!activeSession
+  const activeTab: 'home' | 'call' | 'settings' = (state === 'home' || state === 'setup' || state === 'voice-setup') ? 'home' : state === 'settings' ? 'settings' : 'call'
 
   const renderContent = () => {
     if (state === 'settings') return <Settings onBack={() => setState('home')} />
@@ -79,12 +89,8 @@ export default function App(): React.ReactElement {
     if (state === 'home') {
       return (
         <SessionList
-          onNewCall={() => {
-            window.darkscribe.session.create({ name: undefined }).then((session: any) => {
-              setActiveSession({ id: session.id, name: session.name })
-              setState('call')
-            })
-          }}
+          onNewCall={() => setState('setup')}
+          onNewVoiceNote={() => setState('voice-setup')}
           onSelectSession={(session) => {
             setActiveSession({ id: session.id, name: session.name })
             setState('call')
@@ -93,26 +99,43 @@ export default function App(): React.ReactElement {
       )
     }
 
+    if (state === 'setup') {
+      return <CallSetup onStart={startCallFromSetup} onCancel={() => setState('home')} />
+    }
+
+    if (state === 'voice-setup') {
+      return <VoiceNoteSetup onStart={startVoiceNote} onCancel={() => setState('home')} />
+    }
+
     if (state === 'summary' && activeSession) {
       return (
         <PostCallSummary
           segments={completedSegments}
           sessionId={activeSession.id}
           sessionName={activeSession.name}
+          participants={activeSession.participants}
+          webSearches={completedWebSearches}
           audioFile={completedAudioFile}
           onBack={() => { setActiveSession(null); setState('home') }}
-          onNewCall={() => {
-            setActiveSession(null)
-            window.darkscribe.session.create({ name: undefined }).then((session: any) => {
-              setActiveSession({ id: session.id, name: session.name })
-              setState('call')
-            })
-          }}
+          onNewCall={() => { setActiveSession(null); setState('setup') }}
         />
       )
     }
 
-    if (state === 'call' && activeSession) {
+    if (state === 'voice-summary') {
+      return (
+        <VoiceNoteSummary
+          segments={completedSegments}
+          topic={voiceNote.topic}
+          category={voiceNote.category}
+          audioFile={completedAudioFile}
+          onBack={() => { setActiveSession(null); setState('home') }}
+          onNew={() => { setActiveSession(null); setState('voice-setup') }}
+        />
+      )
+    }
+
+    if ((state === 'call' || state === 'voice-call') && activeSession) {
       return (
         <MainApp
           sessionId={activeSession.id}
@@ -128,7 +151,7 @@ export default function App(): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-1)', paddingTop: 28 }}>
-      <TopNav activeTab={activeTab} isCapturing={state === 'call' && !!activeSession} onNavigate={handleNav} />
+      <TopNav activeTab={activeTab} isCapturing={isRecording} onNavigate={handleNav} />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {renderContent()}
       </div>

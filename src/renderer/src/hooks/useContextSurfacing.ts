@@ -8,6 +8,7 @@ export interface ContextSurfacingState {
   cards: ContextCard[]
   loading: boolean
   enabled: boolean
+  debugStatus: string
 }
 
 export interface ContextSurfacingActions {
@@ -21,27 +22,42 @@ export function useContextSurfacing(
   const [cards, setCards] = useState<ContextCard[]>([])
   const [loading, setLoading] = useState(false)
   const [enabled, setEnabled] = useState(true)
+  const [debugStatus, setDebugStatus] = useState('Waiting to start...')
   const seenPathsRef = useRef(new Set<string>())
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastCheckRef = useRef(0)
 
   const runCheck = useCallback(async () => {
-    if (!isCapturing || !enabled) return
+    console.log('[Context] runCheck called — isCapturing:', isCapturing, 'enabled:', enabled, 'segments:', segments.length)
+    if (!isCapturing || !enabled) { setDebugStatus('Not active'); return }
 
     // Get last ~60 seconds of transcript
     const now = Date.now()
     const recentSegments = segments.filter(
       s => s.isFinal && s.text.trim() && (now - s.timestamp) < 60000
     )
-    if (recentSegments.length === 0) return
+    console.log('[Context] Recent segments (last 60s):', recentSegments.length)
+    if (recentSegments.length === 0) { setDebugStatus('No recent segments'); return }
 
     const chunk = recentSegments.map(s => s.text).join(' ')
-    if (chunk.length < 20) return // Too short to extract entities from
+    console.log('[Context] Chunk length:', chunk.length, '— text:', chunk.substring(0, 100))
+    if (chunk.length < 20) { setDebugStatus('Text too short'); return }
 
     setLoading(true)
+    setDebugStatus('Checking...')
     try {
       const apiKey = await window.darkscribe.keychain.get('openai-api-key')
-      if (!apiKey) return
+      if (!apiKey) { console.warn('[Context] No API key'); setDebugStatus('No API key'); return }
+
+      // Check vault connection
+      try {
+        const status = await window.darkscribe.vault.status()
+        console.log('[Context] Vault status:', status)
+        if (!status.connected) { console.warn('[Context] Vault not connected'); setDebugStatus('Vault not connected'); return }
+      } catch (e) {
+        console.warn('[Context] Vault status check failed:', e)
+        setDebugStatus('Vault check failed')
+      }
 
       // Read skill file vocabulary
       let vocabulary: Record<string, string> = {}
@@ -55,15 +71,25 @@ export function useContextSurfacing(
         }
       } catch {}
 
+      setDebugStatus('Extracting entities...')
+      console.log('[Context] Extracting entities...')
       const entities = await extractEntities(chunk, apiKey)
-      if (entities.length === 0) return
+      console.log('[Context] Entities found:', entities)
+      if (entities.length === 0) { setDebugStatus('No entities found'); return }
 
+      setDebugStatus(`Found: ${entities.join(', ')} — searching vault...`)
+      console.log('[Context] Searching vault for context...')
       const newCards = await searchForContext(entities, seenPathsRef.current, vocabulary)
+      console.log('[Context] Cards found:', newCards.length, newCards.map(c => c.title))
       if (newCards.length > 0) {
-        setCards(prev => [...newCards, ...prev].slice(0, 10)) // Keep max 10
+        setCards(prev => [...newCards, ...prev].slice(0, 10))
+        setDebugStatus(`Found ${newCards.length} related notes`)
+      } else {
+        setDebugStatus(`Searched for ${entities.join(', ')} — no vault matches`)
       }
     } catch (err) {
       console.error('[ContextSurfacing] Error:', err)
+      setDebugStatus(`Error: ${(err as Error).message}`)
     } finally {
       setLoading(false)
     }
@@ -101,5 +127,5 @@ export function useContextSurfacing(
     }
   }, [isCapturing])
 
-  return { cards, loading, enabled, setEnabled }
+  return { cards, loading, enabled, setEnabled, debugStatus }
 }

@@ -1,5 +1,13 @@
 import React, { useState } from 'react'
 
+export interface WebSearchResult {
+  query: string
+  title: string
+  snippet: string
+  url: string
+  source: string
+}
+
 interface SearchResult {
   path: string
   snippet: string
@@ -8,16 +16,20 @@ interface SearchResult {
   title?: string
 }
 
-export default function VaultSearchPanel(): React.ReactElement {
+interface Props {
+  onAddToSummary?: (result: WebSearchResult) => void
+}
+
+export default function VaultSearchPanel({ onAddToSummary }: Props): React.ReactElement {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [searchedVault, setSearchedVault] = useState(false)
   const [answer, setAnswer] = useState('')
-  const [savingIdx, setSavingIdx] = useState<number | null>(null)
   const [webSource, setWebSource] = useState<string>('')
 
   const [searchError, setSearchError] = useState('')
+  const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set())
 
   const searchVault = async () => {
     if (!query.trim()) return
@@ -27,17 +39,24 @@ export default function VaultSearchPanel(): React.ReactElement {
     setSearchedVault(true)
     setWebSource('')
     setSearchError('')
+    setAddedIndices(new Set())
+
+    const timeout = setTimeout(() => {
+      setSearching(false)
+      setSearchError('Search timed out. Try again.')
+    }, 5000)
 
     try {
-      // Check vault status first
       const status = await window.darkscribe.vault.status()
       if (!status.connected) {
-        setSearchError('Vault not connected')
+        clearTimeout(timeout)
+        setSearchError('Vault not connected. Is Obsidian running?')
         setSearching(false)
         return
       }
 
       const res = await window.darkscribe.vault.search(query)
+      clearTimeout(timeout)
       if (res.error) {
         setSearchError(res.error)
       } else {
@@ -49,12 +68,12 @@ export default function VaultSearchPanel(): React.ReactElement {
         setResults(vaultResults)
       }
     } catch (e) {
+      clearTimeout(timeout)
       setSearchError((e as Error).message)
     }
     setSearching(false)
   }
 
-  // Uses Tavily → OpenAI fallback chain automatically
   const searchWeb = async () => {
     if (!query.trim()) return
     setSearching(true)
@@ -74,31 +93,16 @@ export default function VaultSearchPanel(): React.ReactElement {
     setSearching(false)
   }
 
-  const saveToVault = async (result: SearchResult, idx: number) => {
-    setSavingIdx(idx)
-    const config = await window.darkscribe.config.read()
-    const prefix = (config.vault_subfolder as string) || ''
-    const vp = (p: string) => prefix ? `${prefix}/${p}` : p
-
-    const date = new Date().toISOString().split('T')[0]
-    const safeName = query.trim().replace(/[/\\:*?"<>|]/g, '-').substring(0, 60)
-    const path = vp(`Resources/References/${date}_${safeName}.md`)
-
-    const content = `---
-tags: [reference, web-search]
-date: "${date}"
-source_url: "${result.url ?? ''}"
-query: "${query}"
----
-
-# ${result.title ?? query}
-
-${result.snippet}
-
-${result.url ? `\nSource: ${result.url}` : ''}
-`
-    await window.darkscribe.vault.createNote(path, content)
-    setSavingIdx(null)
+  const addToSummary = (result: SearchResult, idx: number) => {
+    if (!onAddToSummary) return
+    onAddToSummary({
+      query: query.trim(),
+      title: result.title ?? query.trim(),
+      snippet: result.snippet,
+      url: result.url ?? '',
+      source: webSource || 'web'
+    })
+    setAddedIndices(prev => new Set(prev).add(idx))
   }
 
   return (
@@ -125,6 +129,13 @@ ${result.url ? `\nSource: ${result.url}` : ''}
           fontWeight: 600, cursor: 'pointer', opacity: searching ? 0.6 : 1
         }}>
           Vault
+        </button>
+        <button onClick={searchWeb} disabled={searching || !query.trim()} style={{
+          padding: '6px 10px', background: 'var(--surface-3)', color: 'var(--ink-2)',
+          border: '1px solid var(--border-1)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)',
+          fontWeight: 600, cursor: 'pointer', opacity: (searching || !query.trim()) ? 0.5 : 1
+        }}>
+          Web
         </button>
       </div>
 
@@ -160,14 +171,16 @@ ${result.url ? `\nSource: ${result.url}` : ''}
               </span>
               {r.source === 'web' && (
                 <button
-                  onClick={() => saveToVault(r, i)}
-                  disabled={savingIdx === i}
+                  onClick={() => addToSummary(r, i)}
+                  disabled={addedIndices.has(i)}
                   style={{
-                    padding: '2px 8px', background: 'var(--surface-2)', border: '1px solid var(--border-1)',
-                    borderRadius: 'var(--radius-xs)', fontSize: 9, color: 'var(--ink-3)', cursor: 'pointer'
+                    padding: '2px 8px', background: addedIndices.has(i) ? 'var(--positive-subtle)' : 'var(--surface-2)',
+                    border: `1px solid ${addedIndices.has(i) ? 'var(--positive)' : 'var(--border-1)'}`,
+                    borderRadius: 'var(--radius-xs)', fontSize: 9,
+                    color: addedIndices.has(i) ? 'var(--positive)' : 'var(--ink-3)', cursor: 'pointer'
                   }}
                 >
-                  {savingIdx === i ? 'Saved' : 'Save to Vault'}
+                  {addedIndices.has(i) ? 'Added!' : 'Add to Summary'}
                 </button>
               )}
             </div>
@@ -194,16 +207,6 @@ ${result.url ? `\nSource: ${result.url}` : ''}
         )}
       </div>
 
-      {/* Web search — Tavily → OpenAI fallback */}
-      {searchedVault && !searching && (
-        <button onClick={searchWeb} style={{
-          marginTop: 'var(--sp-2)', padding: '6px 0', background: 'none',
-          border: '1px dashed var(--border-1)', borderRadius: 'var(--radius-sm)',
-          fontSize: 'var(--text-xs)', color: 'var(--ink-3)', cursor: 'pointer'
-        }}>
-          Search Web
-        </button>
-      )}
     </div>
   )
 }

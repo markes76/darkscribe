@@ -12,7 +12,7 @@ export interface AppConfig {
   vault_subfolder?: string            // Darkscribe subfolder within vault (e.g. "Work/Darkscribe")
   obsidian_host?: string              // REST API host (default: 127.0.0.1)
   obsidian_port?: number              // REST API port (default: 27124)
-  obsidian_vault_name?: string        // Vault name for deep links (e.g. "Mark Mind")
+  obsidian_vault_name?: string        // Vault name for deep links (e.g. "MyVault")
   recordings_enabled?: boolean
   recordings_retention_days?: number
   transcription_mode?: 'auto' | 'preferred'

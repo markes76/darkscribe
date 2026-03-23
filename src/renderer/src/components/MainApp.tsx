@@ -1,15 +1,16 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useRealtimeTranscription } from '../hooks/useRealtimeTranscription'
 import { useContextSurfacing } from '../hooks/useContextSurfacing'
 import Transcript from './SessionView/Transcript'
 import VaultSearchPanel from './SearchPanel/VaultSearchPanel'
+import type { WebSearchResult } from './SearchPanel/VaultSearchPanel'
 import ContextPanel from './SearchPanel/ContextPanel'
 import type { TranscriptSegment } from '../services/openai-realtime'
 
 interface Props {
   sessionId: string
   sessionName?: string
-  onEndCall: (segments: TranscriptSegment[], audioFile: string | null) => void
+  onEndCall: (segments: TranscriptSegment[], audioFile: string | null, webSearches: WebSearchResult[]) => void
   onBack: () => void
 }
 
@@ -20,17 +21,22 @@ export default function MainApp({ sessionId, sessionName, onEndCall, onBack }: P
     startSession, stopSession
   } = useRealtimeTranscription()
 
-  const { cards: contextCards, loading: contextLoading, enabled: contextEnabled, setEnabled: setContextEnabled } = useContextSurfacing(segments, isCapturing)
+  const { cards: contextCards, loading: contextLoading, enabled: contextEnabled, setEnabled: setContextEnabled, debugStatus: contextDebug } = useContextSurfacing(segments, isCapturing)
   const [rightTab, setRightTab] = useState<'context' | 'search'>('context')
 
   const [contactName, setContactName] = useState(sessionName ?? '')
   const [editingContact, setEditingContact] = useState(false)
   const [contactDraft, setContactDraft] = useState('')
+  const [collectedSearches, setCollectedSearches] = useState<WebSearchResult[]>([])
   const isActive = isCapturing || status === 'connecting' || status === 'connected'
+
+  const handleAddToSummary = useCallback((result: WebSearchResult) => {
+    setCollectedSearches(prev => [...prev, result])
+  }, [])
 
   const handleStop = async () => {
     const recording = await stopSession()
-    onEndCall(segments, recording?.filePath ?? null)
+    onEndCall(segments, recording?.filePath ?? null, collectedSearches)
   }
 
   const saveContact = async (name: string) => {
@@ -150,9 +156,9 @@ export default function MainApp({ sessionId, sessionName, onEndCall, onBack }: P
           </div>
           {/* Tab content */}
           {rightTab === 'context' ? (
-            <ContextPanel cards={contextCards} loading={contextLoading} enabled={contextEnabled} onToggle={setContextEnabled} />
+            <ContextPanel cards={contextCards} loading={contextLoading} enabled={contextEnabled} onToggle={setContextEnabled} debugStatus={contextDebug} />
           ) : (
-            <VaultSearchPanel />
+            <VaultSearchPanel onAddToSummary={handleAddToSummary} />
           )}
         </div>
       </div>

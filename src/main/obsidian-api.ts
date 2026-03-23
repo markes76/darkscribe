@@ -126,19 +126,36 @@ export async function deleteNote(filePath: string): Promise<void> {
 }
 
 // Search vault (full-text search)
+// Obsidian REST API: POST /search/simple/?contextLength=N with plain text body
 export async function searchVault(query: string, contextLength: number = 100): Promise<Array<{ path: string; snippet: string; score: number }>> {
-  const resp = await obsidianFetch('/search/simple/', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, contextLength })
+  const encodedQuery = encodeURIComponent(query)
+  const url = `/search/simple/?query=${encodedQuery}&contextLength=${contextLength}`
+  console.log('[Obsidian:searchVault] URL:', url)
+  const resp = await obsidianFetch(url, {
+    method: 'POST'
   })
-  if (!resp.ok) throw new Error(`Search failed (${resp.status})`)
+  console.log('[Obsidian:searchVault] Response status:', resp.status)
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    console.error('[Obsidian:searchVault] Error body:', text)
+    throw new Error(`Search failed (${resp.status}): ${text}`)
+  }
 
-  const data = await resp.json() as Array<{
+  const rawText = await resp.text()
+  console.log('[Obsidian:searchVault] Raw response length:', rawText.length, 'preview:', rawText.substring(0, 300))
+
+  if (!rawText || rawText === '[]') {
+    console.log('[Obsidian:searchVault] Empty result')
+    return []
+  }
+
+  const data = JSON.parse(rawText) as Array<{
     filename: string
     score: number
     matches: Array<{ match: { start: number; end: number }; context: string }>
   }>
+
+  console.log('[Obsidian:searchVault] Parsed entries:', data.length)
 
   return data.map(item => ({
     path: item.filename,
@@ -251,15 +268,19 @@ export function setupObsidianIpc(): void {
 
   ipcMain.handle('vault:search', async (_e, query: string) => {
     try {
+      console.log('[Obsidian:search] Query:', query)
       const subfolder = getSubfolder()
+      console.log('[Obsidian:search] Subfolder filter:', subfolder)
       const allResults = await searchVault(query)
+      console.log('[Obsidian:search] Raw results:', allResults.length, allResults.map(r => r.path).slice(0, 5))
       // Filter to Darkscribe subfolder first, then show others
       const scoped = subfolder
         ? allResults.filter(r => r.path.startsWith(subfolder))
         : allResults
+      console.log('[Obsidian:search] Scoped results:', scoped.length)
       return { results: scoped.length > 0 ? scoped : allResults.slice(0, 10) }
     } catch (err) {
-      console.error('[Obsidian] Search failed:', (err as Error).message)
+      console.error('[Obsidian:search] Failed:', (err as Error).message)
       return { results: [], error: (err as Error).message }
     }
   })

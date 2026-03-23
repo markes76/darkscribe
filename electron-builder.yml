@@ -5,10 +5,13 @@ copyright: Copyright © 2026 Darkscribe
 directories:
   buildResources: build
   output: dist
+  app: .
 
 files:
   - out/**/*
   - "!**/{.DS_Store,.git,.gitkeep,.gitignore,.npmignore}"
+  - "!swift/**/*"
+  - "!swift"
 
 extraResources:
   - from: resources/AudioCapture
@@ -16,6 +19,8 @@ extraResources:
 
 mac:
   target:
+    - target: dir
+      arch: arm64
     - target: dmg
       arch: arm64
   minimumSystemVersion: "13.0"

@@ -54,9 +54,18 @@ export function useRealtimeTranscription(): TranscriptionState & TranscriptionAc
   const handleTranscriptSegment = useCallback((seg: TranscriptSegment) => {
     setSegments(prev => {
       const idx = prev.findIndex(s => s.id === seg.id)
-      if (idx === -1) return [...prev, seg]
-      const next = [...prev]
-      next[idx] = seg
+      if (idx !== -1) {
+        // Update existing segment in place
+        const next = [...prev]
+        next[idx] = seg
+        return next
+      }
+      // Insert new segment in chronological order by timestamp
+      const next = [...prev, seg]
+      // Only sort if the new segment is out of order (optimization)
+      if (prev.length > 0 && seg.timestamp < prev[prev.length - 1].timestamp) {
+        next.sort((a, b) => a.timestamp - b.timestamp)
+      }
       return next
     })
   }, [])
@@ -111,12 +120,38 @@ export function useRealtimeTranscription(): TranscriptionState & TranscriptionAc
     window.darkscribe.recording.start(sessionId).catch(() => {})
     timerRef.current = setInterval(() => setCallDuration(p => p + 1), 1000)
 
+    // Read language settings and vocabulary hints from config + skill file
+    let languages: string[] = []
+    let vocabularyHints = ''
+    try {
+      const config = await window.darkscribe.config.read()
+      if (config.transcription_mode === 'preferred' && config.preferred_languages?.length) {
+        languages = config.preferred_languages as string[]
+      }
+
+      // Load vocabulary from Notetaker Skill file
+      const prefix = (config.vault_subfolder as string) || ''
+      const skillPath = prefix ? `${prefix}/System/Notetaker Skill.md` : 'System/Notetaker Skill.md'
+      try {
+        const skillResult = await window.darkscribe.vault.readNote(skillPath)
+        if (skillResult?.content) {
+          // Extract the "Vocabulary and Corrections" section
+          const vocabMatch = skillResult.content.match(/## Vocabulary and Corrections\n([\s\S]*?)(?=\n## |\n---|\Z)/)
+          if (vocabMatch?.[1]?.trim()) {
+            vocabularyHints = vocabMatch[1].trim()
+          }
+        }
+      } catch {} // Vault may not be connected — that's fine
+    } catch {}
+
     const service = new RealtimeTranscriptionService(
       handleTranscriptSegment,
       (s, detail) => {
         setStatus(s === 'connecting' ? 'connecting' : s === 'connected' ? 'connected' : s === 'disconnected' ? 'disconnected' : 'error')
         setStatusDetail(detail ?? '')
-      }
+      },
+      languages,
+      vocabularyHints
     )
     serviceRef.current = service; service.connect()
     startMicCapture(service)

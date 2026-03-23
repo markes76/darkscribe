@@ -2,15 +2,40 @@ import React, { useEffect, useState } from 'react'
 import type { TranscriptSegment } from '../services/openai-realtime'
 import { generateSummary, CallSummary } from '../services/summarizer'
 import ShareableSummaryModal from './ShareableSummaryModal'
+import type { WebSearchResult } from './SearchPanel/VaultSearchPanel'
 
-function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], sessionName?: string, audioFile?: string | null): string {
+function sanitizeName(name: string): string {
+  return name.replace(/[/\\:*?"<>|]/g, '-').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+}
+
+function buildFilename(dateTime: string, recordingName?: string): string {
+  const date = new Date(dateTime)
+  const dateStr = date.toISOString().split('T')[0]
+  const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '-').substring(0, 5)
+  if (recordingName) {
+    return `${dateStr}_${timeStr}_${sanitizeName(recordingName)}`
+  }
+  return `${dateStr}_${timeStr}`
+}
+
+function filterParticipants(participants: string[]): string[] {
+  return participants.filter(p => p !== 'You' && p !== 'Them' && p !== 'Speaker 1' && p !== 'Speaker 2')
+}
+
+function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], sessionName?: string, participants?: string, audioFile?: string | null, webSearches?: WebSearchResult[]): string {
+  const realParticipants = filterParticipants(sum.participants)
+  // If user provided participant names, use those
+  const participantList = participants
+    ? participants.split(',').map(p => p.trim()).filter(Boolean)
+    : realParticipants
+
   const lines: string[] = [
     '---',
     'tags: [call, summary]',
     `date: "${sum.dateTime.split('T')[0]}"`,
-    `contact: "${sessionName ?? ''}"`,
+    sessionName ? `title: "${sessionName}"` : '',
+    participantList.length ? `participants: [${participantList.map(p => `"${p}"`).join(', ')}]` : 'participants: []',
     `duration: "${sum.durationMinutes}min"`,
-    `participants: [${sum.participants.map(p => `"${p}"`).join(', ')}]`,
     audioFile ? `recording_path: "${audioFile}"` : '',
     '---',
     '',
@@ -32,15 +57,68 @@ function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], s
     lines.push('## Follow-ups', ...sum.followUps.map(f => `- ${f}`), '')
   }
 
+  // Sentiment Analysis
+  if (sum.sentiment?.overallTone) {
+    lines.push('## Sentiment Analysis', '')
+    lines.push(`**Overall Tone:** ${sum.sentiment.overallTone}`, '')
+    if (sum.sentiment.emotionalArc) lines.push(`**Emotional Arc:** ${sum.sentiment.emotionalArc}`, '')
+    if (sum.sentiment.participantDynamics) lines.push(`**Participant Dynamics:** ${sum.sentiment.participantDynamics}`, '')
+    if (sum.sentiment.engagementLevel) lines.push(`**Engagement:** ${sum.sentiment.engagementLevel}`, '')
+
+    if (sum.sentiment.topicSentiments?.length) {
+      lines.push('### Sentiment by Topic')
+      for (const ts of sum.sentiment.topicSentiments) {
+        lines.push(`- **${ts.topic}** — *${ts.sentiment}*: ${ts.detail}`)
+      }
+      lines.push('')
+    }
+
+    if (sum.sentiment.keyMoments?.length) {
+      lines.push('### Key Moments')
+      for (const km of sum.sentiment.keyMoments) {
+        lines.push(`- **${km.topic}** [${km.sentiment}]: ${km.indicator}`)
+      }
+      lines.push('')
+    }
+
+    if (sum.sentiment.positiveSignals?.length) {
+      lines.push('### Positive Signals', ...sum.sentiment.positiveSignals.map(s => `- ${s}`), '')
+    }
+    if (sum.sentiment.concerns?.length) {
+      lines.push('### Concerns Detected', ...sum.sentiment.concerns.map(c => `- ${c}`), '')
+    }
+    if (sum.sentiment.risksDetected?.length) {
+      lines.push('### Risks', ...sum.sentiment.risksDetected.map(r => `- ${r}`), '')
+    }
+    if (sum.sentiment.recommendation) {
+      lines.push(`**Recommendation:** ${sum.sentiment.recommendation}`, '')
+    }
+  }
+
+  if (webSearches && webSearches.length > 0) {
+    lines.push('## Web Searches', '')
+    for (const ws of webSearches) {
+      lines.push(`### ${ws.title}`)
+      if (ws.url) lines.push(`Source: [${ws.url}](${ws.url})`)
+      lines.push(`Query: *${ws.query}*`)
+      lines.push('', ws.snippet, '')
+    }
+  }
+
   return lines.filter(l => l !== undefined).join('\n')
 }
 
-function buildTranscriptMarkdown(segments: TranscriptSegment[], sum: CallSummary, sessionName?: string, audioFile?: string | null): string {
+function buildTranscriptMarkdown(segments: TranscriptSegment[], sum: CallSummary, sessionName?: string, participants?: string, audioFile?: string | null): string {
+  const participantList = participants
+    ? participants.split(',').map(p => p.trim()).filter(Boolean)
+    : filterParticipants(sum.participants)
+
   const lines: string[] = [
     '---',
     'tags: [call, transcript]',
     `date: "${sum.dateTime.split('T')[0]}"`,
-    `contact: "${sessionName ?? ''}"`,
+    sessionName ? `title: "${sessionName}"` : '',
+    participantList.length ? `participants: [${participantList.map(p => `"${p}"`).join(', ')}]` : 'participants: []',
     `duration: "${sum.durationMinutes}min"`,
     audioFile ? `recording_path: "${audioFile}"` : '',
     '---',
@@ -50,9 +128,8 @@ function buildTranscriptMarkdown(segments: TranscriptSegment[], sum: CallSummary
   ]
 
   for (const seg of segments.filter(s => s.isFinal && s.text.trim())) {
-    const speaker = seg.speakerName ?? (seg.speaker === 'mic' ? 'You' : 'Them')
     const time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    lines.push(`**[${speaker}]** *(${time})* ${seg.text}`, '')
+    lines.push(`*(${time})* ${seg.text}`, '')
   }
 
   return lines.filter(l => l !== undefined).join('\n')
@@ -62,12 +139,14 @@ interface Props {
   segments: TranscriptSegment[]
   sessionId: string
   sessionName?: string
+  participants?: string
+  webSearches?: WebSearchResult[]
   audioFile?: string | null
   onBack: () => void
   onNewCall: () => void
 }
 
-export default function PostCallSummary({ segments, sessionId, sessionName, audioFile, onBack, onNewCall }: Props): React.ReactElement {
+export default function PostCallSummary({ segments, sessionId, sessionName, participants, webSearches = [], audioFile, onBack, onNewCall }: Props): React.ReactElement {
   const [summary, setSummary] = useState<CallSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -100,7 +179,7 @@ export default function PostCallSummary({ segments, sessionId, sessionName, audi
         setSummary(sum)
 
         // Build markdown for vault save
-        const md = buildSummaryMarkdown(sum, segments, sessionName, audioFile)
+        const md = buildSummaryMarkdown(sum, segments, sessionName, participants, audioFile, webSearches)
         setSummaryMarkdown(md)
 
         // Save call record
@@ -117,6 +196,14 @@ export default function PostCallSummary({ segments, sessionId, sessionName, audi
   }, [segments, sessionId, audioFile])
 
   const [vaultError, setVaultError] = useState('')
+  const [savedNotePath, setSavedNotePath] = useState('')
+
+  const openInObsidian = async (filePath: string) => {
+    const config = await window.darkscribe.config.read()
+    const vaultName = encodeURIComponent((config.obsidian_vault_name as string) || 'MyVault')
+    const encodedPath = encodeURIComponent(filePath)
+    await window.darkscribe.shell.openUrl(`obsidian://open?vault=${vaultName}&file=${encodedPath}`)
+  }
 
   const saveToVault = async () => {
     if (!summary || savingToVault) return
@@ -142,11 +229,8 @@ export default function PostCallSummary({ segments, sessionId, sessionName, audi
       const prefix = (config.vault_subfolder as string) || ''
       const vp = (p: string) => prefix ? `${prefix}/${p}` : p
 
-      const date = new Date(summary.dateTime)
-      const dateStr = date.toISOString().split('T')[0]
-      const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '-').substring(0, 5)
-      const name = (sessionName || 'Unknown').replace(/[/\\:*?"<>|]/g, '-')
-      const notePath = vp(`Calls/Summaries/${dateStr}_${timeStr}_${name}.md`)
+      const baseName = buildFilename(summary.dateTime, sessionName)
+      const notePath = vp(`Calls/Summaries/${baseName}.md`)
 
       // Use saveNote (create or overwrite) instead of createNote (fails if exists)
       const saveResult = await window.darkscribe.vault.saveNote(notePath, summaryMarkdown)
@@ -165,11 +249,21 @@ export default function PostCallSummary({ segments, sessionId, sessionName, audi
       }
 
       // Also save transcript
-      const txPath = vp(`Calls/Transcripts/${dateStr}_${timeStr}_${name}.md`)
-      const txContent = buildTranscriptMarkdown(segments, summary, sessionName, audioFile)
+      const txPath = vp(`Calls/Transcripts/${baseName}.md`)
+      const txContent = buildTranscriptMarkdown(segments, summary, sessionName, participants, audioFile)
       await window.darkscribe.vault.saveNote(txPath, txContent)
 
+      // Save individual web search references
+      for (const ws of webSearches) {
+        const date = summary.dateTime.split('T')[0]
+        const safeQuery = ws.query.replace(/[/\\:*?"<>|]/g, '-').replace(/\s+/g, '-').substring(0, 60)
+        const refPath = vp(`Resources/References/${date}_${safeQuery}.md`)
+        const refContent = `---\ntags: [reference, web-search]\ndate: "${date}"\nsource_url: "${ws.url}"\nquery: "${ws.query}"\nsession: "${baseName}"\n---\n\n# ${ws.title}\n\nSource: [${ws.url}](${ws.url})\n\n## Content\n\n${ws.snippet}\n`
+        await window.darkscribe.vault.saveNote(refPath, refContent).catch(() => {})
+      }
+
       setSavedToVault(true)
+      setSavedNotePath(notePath)
     } catch (e) {
       const msg = (e as Error).message
       console.error('Save to vault failed:', msg)
@@ -222,8 +316,20 @@ export default function PostCallSummary({ segments, sessionId, sessionName, audi
                 opacity: savingToVault ? 0.6 : 1
               }}
             >
-              {savedToVault ? 'Saved to Vault' : savingToVault ? 'Saving...' : 'Save to Vault'}
+              {savedToVault ? 'Saved' : savingToVault ? 'Saving...' : 'Save to Vault'}
             </button>
+            {savedToVault && savedNotePath && (
+              <button
+                onClick={() => openInObsidian(savedNotePath)}
+                style={{
+                  padding: '8px 16px', background: 'none', color: 'var(--purple)',
+                  border: '1px solid var(--purple)', borderRadius: 'var(--radius-md)',
+                  fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 600
+                }}
+              >
+                Open in Obsidian
+              </button>
+            )}
             <button onClick={() => setShowShareable(true)} style={{
               padding: '8px 16px', background: 'var(--surface-raised)', color: 'var(--ink-2)',
               border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)',
@@ -242,7 +348,11 @@ export default function PostCallSummary({ segments, sessionId, sessionName, audi
 
         {saved && (
           <div style={{ padding: 'var(--sp-2) var(--sp-3)', background: 'var(--positive-subtle)', border: '1px solid var(--positive)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)', color: 'var(--positive)', marginBottom: 'var(--sp-4)' }}>
-            Session saved
+            Session saved{savedNotePath && (
+              <span style={{ color: 'var(--ink-4)', marginLeft: 8 }}>
+                {savedNotePath}
+              </span>
+            )}
           </div>
         )}
 
@@ -306,20 +416,118 @@ export default function PostCallSummary({ segments, sessionId, sessionName, audi
           </div>
         ) : null}
 
+        {/* Sentiment Analysis */}
+        {summary?.sentiment?.overallTone && (
+          <details style={{ marginTop: 'var(--sp-4)' }}>
+            <summary style={{ cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-2)', padding: 'var(--sp-2) 0' }}>
+              Sentiment Analysis
+            </summary>
+            <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginTop: 'var(--sp-2)' }}>
+              <div style={{ marginBottom: 'var(--sp-3)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', marginBottom: 4 }}>Overall Tone</div>
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', lineHeight: 1.6 }}>{summary.sentiment.overallTone}</div>
+              </div>
+              {summary.sentiment.emotionalArc && (
+                <div style={{ marginBottom: 'var(--sp-3)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', marginBottom: 4 }}>Emotional Arc</div>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', lineHeight: 1.6 }}>{summary.sentiment.emotionalArc}</div>
+                </div>
+              )}
+              {summary.sentiment.participantDynamics && (
+                <div style={{ marginBottom: 'var(--sp-3)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', marginBottom: 4 }}>Participant Dynamics</div>
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', lineHeight: 1.6 }}>{summary.sentiment.participantDynamics}</div>
+                </div>
+              )}
+              {summary.sentiment.topicSentiments?.length ? (
+                <div style={{ marginBottom: 'var(--sp-3)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', marginBottom: 'var(--sp-2)' }}>By Topic</div>
+                  {summary.sentiment.topicSentiments.map((ts, i) => (
+                    <div key={i} style={{ padding: 'var(--sp-2)', background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--sp-1)', fontSize: 'var(--text-xs)' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--ink-1)' }}>{ts.topic}</span>
+                      <span style={{ color: 'var(--ink-3)', margin: '0 6px' }}>—</span>
+                      <span style={{ fontStyle: 'italic', color: ts.sentiment?.includes('positive') ? 'var(--positive)' : ts.sentiment?.includes('negative') || ts.sentiment?.includes('tense') ? 'var(--negative)' : 'var(--ink-2)' }}>{ts.sentiment}</span>
+                      <div style={{ color: 'var(--ink-2)', marginTop: 2 }}>{ts.detail}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {summary.sentiment.keyMoments?.length ? (
+                <div style={{ marginBottom: 'var(--sp-3)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', marginBottom: 'var(--sp-2)' }}>Key Moments</div>
+                  {summary.sentiment.keyMoments.map((km, i) => (
+                    <div key={i} style={{ padding: 'var(--sp-2)', background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--sp-1)', fontSize: 'var(--text-xs)' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--ink-1)' }}>{km.topic}</span>
+                      <span style={{ padding: '1px 6px', marginLeft: 6, background: km.sentiment === 'very positive' || km.sentiment === 'positive' ? 'var(--positive-subtle)' : km.sentiment === 'negative' || km.sentiment === 'tense' ? 'var(--negative-subtle)' : 'var(--surface-3)', borderRadius: 'var(--radius-xs)', fontSize: 9, fontWeight: 600, color: km.sentiment === 'very positive' || km.sentiment === 'positive' ? 'var(--positive)' : km.sentiment === 'negative' || km.sentiment === 'tense' ? 'var(--negative)' : 'var(--ink-3)' }}>{km.sentiment}</span>
+                      <div style={{ color: 'var(--ink-2)', marginTop: 2, fontStyle: 'italic' }}>{km.indicator}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {summary.sentiment.positiveSignals?.length ? (
+                <div style={{ marginBottom: 'var(--sp-3)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--positive)', marginBottom: 4 }}>Positive Signals</div>
+                  {summary.sentiment.positiveSignals.map((s, i) => <div key={i} style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', marginBottom: 2 }}>+ {s}</div>)}
+                </div>
+              ) : null}
+              {summary.sentiment.risksDetected?.length ? (
+                <div style={{ marginBottom: 'var(--sp-3)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--negative)', marginBottom: 4 }}>Risks Detected</div>
+                  {summary.sentiment.risksDetected.map((r, i) => <div key={i} style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', marginBottom: 2 }}>! {r}</div>)}
+                </div>
+              ) : null}
+              {summary.sentiment.concerns?.length ? (
+                <div style={{ marginBottom: 'var(--sp-3)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--warning)', marginBottom: 4 }}>Concerns</div>
+                  {summary.sentiment.concerns.map((c, i) => <div key={i} style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', marginBottom: 2 }}>? {c}</div>)}
+                </div>
+              ) : null}
+              {summary.sentiment.recommendation && (
+                <div style={{ padding: 'var(--sp-3)', background: 'var(--primary-subtle)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)', color: 'var(--ink-1)' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--primary)' }}>Recommendation: </span>
+                  {summary.sentiment.recommendation}
+                </div>
+              )}
+            </div>
+          </details>
+        )}
+
+        {/* Web Searches added during call */}
+        {webSearches.length > 0 && (
+          <div style={{ marginTop: 'var(--sp-4)', padding: 'var(--sp-4)', background: 'var(--surface-raised)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-1)', marginBottom: 'var(--sp-3)' }}>
+              Web Searches ({webSearches.length})
+            </div>
+            {webSearches.map((ws, i) => (
+              <div key={i} style={{ marginBottom: 'var(--sp-3)', padding: 'var(--sp-3)', background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-1)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--ink-1)', marginBottom: 2 }}>{ws.title}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)', marginBottom: 4 }}>Query: {ws.query}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.5 }}>{ws.snippet.substring(0, 200)}{ws.snippet.length > 200 ? '...' : ''}</div>
+                {ws.url && (
+                  <button onClick={() => window.darkscribe.shell.openUrl(ws.url)} style={{ marginTop: 4, padding: 0, background: 'none', border: 'none', color: 'var(--primary)', fontSize: 'var(--text-xs)', cursor: 'pointer', textDecoration: 'underline' }}>
+                    Open source
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Transcript Toggle */}
         <details style={{ marginTop: 'var(--sp-4)' }}>
           <summary style={{ cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--ink-2)', padding: 'var(--sp-2) 0' }}>
             View Full Transcript ({segments.filter(s => s.isFinal).length} segments)
           </summary>
           <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)', marginTop: 'var(--sp-2)', maxHeight: 400, overflow: 'auto' }}>
-            {segments.filter(s => s.isFinal && s.text.trim()).map(seg => (
-              <div key={seg.id} style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
-                <span style={{ fontWeight: 700, color: seg.speakerColor ?? 'var(--ink-2)' }}>
-                  [{seg.speakerName ?? (seg.speaker === 'mic' ? 'You' : 'Them')}]
-                </span>{' '}
-                <span style={{ color: 'var(--ink-1)' }}>{seg.text}</span>
-              </div>
-            ))}
+            {segments.filter(s => s.isFinal && s.text.trim()).map(seg => {
+              const time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+              return (
+                <div key={seg.id} style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
+                  <span style={{ color: 'var(--ink-4)', fontSize: 'var(--text-xs)', marginRight: 8 }}>{time}</span>
+                  <span style={{ color: 'var(--ink-1)' }}>{seg.text}</span>
+                </div>
+              )
+            })}
           </div>
         </details>
       </div>

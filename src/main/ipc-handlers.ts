@@ -1,8 +1,9 @@
-import { app, ipcMain, shell, systemPreferences, nativeTheme } from 'electron'
+import { app, ipcMain, shell, systemPreferences, nativeTheme, dialog, BrowserWindow } from 'electron'
 import { keychainGet, keychainSet, keychainDelete } from './keychain'
 import { readConfig, writeConfig } from './config'
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 
 export function setupIpcHandlers(): void {
   // Keychain
@@ -72,13 +73,64 @@ export function setupIpcHandlers(): void {
 
   // Directory picker (still useful for general purposes)
   ipcMain.handle('dialog:select-directory', async () => {
-    const { dialog, BrowserWindow } = require('electron')
-    const win = BrowserWindow.getFocusedWindow()
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
     if (!win) return null
     const result = await dialog.showOpenDialog(win, {
       title: 'Select Directory',
       properties: ['openDirectory']
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+
+  // Vault-aware folder picker — opens Finder at the vault root, returns relative path
+  ipcMain.handle('dialog:select-vault-folder', async (_e, vaultName?: string) => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0]
+    if (!win) return null
+
+    // Try to find the Obsidian vault root on disk
+    const homedir = os.homedir()
+    const candidatePaths = [
+      // iCloud synced vaults
+      path.join(homedir, 'Library/Mobile Documents/iCloud~md~obsidian/Documents', vaultName || ''),
+      path.join(homedir, 'Library/Mobile Documents/iCloud~md~obsidian/Documents'),
+      // Local vaults (common locations)
+      path.join(homedir, 'Documents', vaultName || ''),
+      path.join(homedir, vaultName || ''),
+      homedir
+    ]
+
+    let defaultPath = homedir
+    for (const p of candidatePaths) {
+      if (p && fs.existsSync(p)) {
+        defaultPath = p
+        break
+      }
+    }
+
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Select Darkscribe Folder in Vault',
+      defaultPath,
+      properties: ['openDirectory', 'createDirectory'],
+      message: 'Select the folder where Darkscribe should store notes in your Obsidian vault'
+    })
+
+    if (result.canceled || !result.filePaths[0]) return null
+
+    const selected = result.filePaths[0]
+
+    // Try to compute relative path from vault root
+    // The vault root is the folder containing .obsidian/
+    let current = selected
+    while (current !== path.dirname(current)) {
+      if (fs.existsSync(path.join(current, '.obsidian'))) {
+        // Found vault root — return relative path
+        const relative = path.relative(current, selected)
+        return { absolutePath: selected, relativePath: relative || '', vaultRoot: current }
+      }
+      current = path.dirname(current)
+    }
+
+    // Couldn't find .obsidian — return the full path as-is
+    return { absolutePath: selected, relativePath: '', vaultRoot: '' }
   })
 }
