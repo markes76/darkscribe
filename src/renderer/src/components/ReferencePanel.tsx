@@ -79,13 +79,13 @@ export default function ReferencePanel({ references, onReferencesChange, maxRefe
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 padding: '2px 8px', background: 'var(--primary-subtle)',
-                border: '1px solid var(--primary)', borderRadius: 'var(--radius-full)',
-                fontSize: 'var(--text-xs)', color: 'var(--primary)', maxWidth: '100%'
+                border: '1px solid var(--accent)', borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--text-xs)', color: 'var(--accent)', maxWidth: '100%'
               }}
             >
               <button
                 onClick={() => openInObsidian(ref.path)}
-                style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: 'var(--text-xs)', cursor: 'pointer', fontWeight: 600, padding: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 'var(--text-xs)', cursor: 'pointer', fontWeight: 600, padding: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 title={`Open ${ref.title} in Obsidian`}
               >
                 [[{ref.title}]]
@@ -132,7 +132,7 @@ export default function ReferencePanel({ references, onReferencesChange, maxRefe
               }}
             />
             <button onClick={search} disabled={searching} style={{
-              padding: '4px 8px', background: 'var(--primary)', color: 'white',
+              padding: '4px 8px', background: 'var(--accent)', color: 'var(--accent-ink)',
               border: 'none', borderRadius: 'var(--radius-xs)', fontSize: 'var(--text-xs)',
               cursor: 'pointer', fontWeight: 600
             }}>
@@ -162,8 +162,8 @@ export default function ReferencePanel({ references, onReferencesChange, maxRefe
                     <button
                       onClick={() => attach(r)}
                       style={{
-                        padding: '2px 8px', background: 'var(--primary-subtle)', border: '1px solid var(--primary)',
-                        borderRadius: 'var(--radius-xs)', fontSize: 9, color: 'var(--primary)', cursor: 'pointer', fontWeight: 600, flexShrink: 0, marginLeft: 8
+                        padding: '2px 8px', background: 'var(--primary-subtle)', border: '1px solid var(--accent)',
+                        borderRadius: 'var(--radius-xs)', fontSize: 9, color: 'var(--accent)', cursor: 'pointer', fontWeight: 600, flexShrink: 0, marginLeft: 8
                       }}
                     >
                       Attach

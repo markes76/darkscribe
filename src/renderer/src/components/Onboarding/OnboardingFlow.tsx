@@ -144,13 +144,13 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
   }
 
   const btnPrimary: React.CSSProperties = {
-    padding: '12px 32px', background: 'var(--primary)', color: 'white',
+    padding: '12px 32px', background: 'var(--accent)', color: 'var(--accent-ink)',
     border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700,
     fontSize: 'var(--text-sm)', cursor: 'pointer', boxShadow: 'var(--shadow-sm)'
   }
 
   const btnSecondary: React.CSSProperties = {
-    padding: '10px 24px', background: 'var(--surface-raised)', color: 'var(--ink-2)',
+    padding: '10px 24px', background: 'var(--surface-2)', color: 'var(--ink-2)',
     border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)',
     fontSize: 'var(--text-sm)', cursor: 'pointer'
   }
@@ -158,7 +158,7 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
   const inputStyle: React.CSSProperties = {
     width: 360, padding: '10px 14px', border: '1px solid var(--border-1)',
     borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)',
-    background: 'var(--surface-raised)', color: 'var(--ink-1)'
+    background: 'var(--surface-2)', color: 'var(--ink-1)'
   }
 
   if (step === 'welcome') {
@@ -217,10 +217,10 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
 
         {/* Setup guide — collapsed by default */}
         <details style={{ width: 420, textAlign: 'left', marginBottom: 'var(--sp-2)' }}>
-          <summary style={{ cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--primary)', padding: 'var(--sp-1) 0' }}>
+          <summary style={{ cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--accent)', padding: 'var(--sp-1) 0' }}>
             First time? Setup guide
           </summary>
-          <div style={{ padding: 'var(--sp-3)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginTop: 'var(--sp-1)', fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.8 }}>
+          <div style={{ padding: 'var(--sp-3)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginTop: 'var(--sp-1)', fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.8 }}>
             <ol style={{ paddingLeft: 18, margin: 0 }}>
               <li>Open Obsidian with your vault</li>
               <li>Go to <b>Settings</b> (gear icon) → <b>Community plugins</b></li>
@@ -233,7 +233,7 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
               <li>Note the <b>port number</b> (usually 27123 or 27124)</li>
               <li>Paste both below and click <b>Test Connection</b></li>
             </ol>
-            <button onClick={() => window.darkscribe.shell.openUrl('https://github.com/coddingtonbear/obsidian-local-rest-api')} style={{ marginTop: 8, padding: 0, background: 'none', border: 'none', color: 'var(--primary)', fontSize: 'var(--text-xs)', cursor: 'pointer', textDecoration: 'underline' }}>
+            <button onClick={() => window.darkscribe.shell.openUrl('https://github.com/coddingtonbear/obsidian-local-rest-api')} style={{ marginTop: 8, padding: 0, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 'var(--text-xs)', cursor: 'pointer', textDecoration: 'underline' }}>
               Plugin documentation →
             </button>
           </div>
@@ -320,7 +320,7 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
           Darkscribe needs microphone and screen recording access to capture audio.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', width: 360 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-3)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-3)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)' }}>
             <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Microphone</span>
             {permStatus.mic ? (
               <span style={{ color: 'var(--positive)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>Granted</span>
@@ -328,7 +328,7 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
               <button onClick={requestMic} style={{ ...btnSecondary, padding: '4px 12px', fontSize: 'var(--text-xs)' }}>Grant</button>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-3)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--sp-3)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)' }}>
             <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Screen Recording</span>
             {permStatus.screen ? (
               <span style={{ color: 'var(--positive)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>Granted</span>
@@ -353,12 +353,12 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
         <div style={{ display: 'flex', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
           <button onClick={() => setLangMode('auto')} style={{
             padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-            background: langMode === 'auto' ? 'var(--primary)' : 'var(--surface-raised)', color: langMode === 'auto' ? 'white' : 'var(--ink-2)',
+            background: langMode === 'auto' ? 'var(--accent)' : 'var(--surface-2)', color: langMode === 'auto' ? 'white' : 'var(--ink-2)',
             border: langMode === 'auto' ? 'none' : '1px solid var(--border-1)'
           }}>Auto-detect</button>
           <button onClick={() => setLangMode('preferred')} style={{
             padding: '10px 20px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-            background: langMode === 'preferred' ? 'var(--primary)' : 'var(--surface-raised)', color: langMode === 'preferred' ? 'white' : 'var(--ink-2)',
+            background: langMode === 'preferred' ? 'var(--accent)' : 'var(--surface-2)', color: langMode === 'preferred' ? 'white' : 'var(--ink-2)',
             border: langMode === 'preferred' ? 'none' : '1px solid var(--border-1)'
           }}>Choose Languages</button>
         </div>
@@ -370,9 +370,9 @@ export default function OnboardingFlow({ onComplete }: Props): React.ReactElemen
               return (
                 <button key={lang.code} onClick={() => toggleLang(lang.code)} style={{
                   padding: '6px 14px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer',
-                  background: selected ? 'var(--primary-subtle)' : 'var(--surface-raised)',
-                  color: selected ? 'var(--primary)' : 'var(--ink-3)',
-                  border: `1px solid ${selected ? 'var(--primary)' : 'var(--border-1)'}`
+                  background: selected ? 'var(--primary-subtle)' : 'var(--surface-2)',
+                  color: selected ? 'var(--accent)' : 'var(--ink-3)',
+                  border: `1px solid ${selected ? 'var(--accent)' : 'var(--border-1)'}`
                 }}>{lang.name}</button>
               )
             })}

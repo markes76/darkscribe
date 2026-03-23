@@ -146,7 +146,7 @@ export default function VoiceNoteSummary({ segments, topic, category, audioFile,
     return (
       <div className="page-enter" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         <div style={{ color: 'var(--negative)', fontSize: 'var(--text-sm)' }}>Error: {error}</div>
-        <button onClick={onBack} style={{ padding: '8px 20px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>Back</button>
+        <button onClick={onBack} style={{ padding: '8px 20px', background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>Back</button>
       </div>
     )
   }
@@ -182,7 +182,7 @@ export default function VoiceNoteSummary({ segments, topic, category, audioFile,
               }}>Open in Obsidian</button>
             )}
             <button onClick={onBack} style={{ padding: '8px 16px', background: 'var(--surface-2)', color: 'var(--ink-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}>Done</button>
-            <button onClick={onNew} style={{ padding: '8px 16px', background: 'var(--purple)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer' }}>New Note</button>
+            <button onClick={onNew} style={{ padding: '8px 16px', background: 'var(--purple)', color: 'var(--accent-ink)', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer' }}>New Note</button>
           </div>
         </div>
 
@@ -195,13 +195,13 @@ export default function VoiceNoteSummary({ segments, topic, category, audioFile,
         {vaultError && (
           <div style={{ padding: 'var(--sp-2) var(--sp-3)', background: 'var(--negative-subtle)', border: '1px solid var(--negative)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)', color: 'var(--negative)', marginBottom: 'var(--sp-4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span>Save failed: {vaultError}</span>
-            <button onClick={saveToVault} style={{ padding: '2px 10px', background: 'var(--negative)', color: 'white', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}>Retry</button>
+            <button onClick={saveToVault} style={{ padding: '2px 10px', background: 'var(--negative)', color: 'var(--accent-ink)', border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}>Retry</button>
           </div>
         )}
 
         {/* Overview */}
         {summary?.overview && (
-          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
+          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
             <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 'var(--sp-2)' }}>Overview</h3>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', lineHeight: 1.6, fontStyle: 'italic' }}>{summary.overview}</p>
           </div>
@@ -209,7 +209,7 @@ export default function VoiceNoteSummary({ segments, topic, category, audioFile,
 
         {/* Key Ideas */}
         {summary?.keyIdeas.length ? (
-          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
+          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
             <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 'var(--sp-2)' }}>Key Ideas</h3>
             {summary.keyIdeas.map((idea, i) => (
               <div key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', marginBottom: 'var(--sp-1)' }}>- {idea}</div>
@@ -219,7 +219,7 @@ export default function VoiceNoteSummary({ segments, topic, category, audioFile,
 
         {/* Questions */}
         {summary?.questions.length ? (
-          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
+          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
             <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 'var(--sp-2)' }}>Questions to Explore</h3>
             {summary.questions.map((q, i) => (
               <div key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', marginBottom: 'var(--sp-1)' }}>? {q}</div>
@@ -229,7 +229,7 @@ export default function VoiceNoteSummary({ segments, topic, category, audioFile,
 
         {/* Connections */}
         {summary?.connections.length ? (
-          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
+          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
             <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 'var(--sp-2)' }}>Connections</h3>
             {summary.connections.map((c, i) => (
               <div key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', marginBottom: 'var(--sp-1)' }}>- {c}</div>
@@ -239,7 +239,7 @@ export default function VoiceNoteSummary({ segments, topic, category, audioFile,
 
         {/* Action Items */}
         {summary?.actionItems.length ? (
-          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
+          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
             <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 'var(--sp-2)' }}>Action Items</h3>
             {summary.actionItems.map((a, i) => (
               <div key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', marginBottom: 'var(--sp-1)' }}>- [ ] {a}</div>

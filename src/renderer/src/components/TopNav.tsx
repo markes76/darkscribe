@@ -10,38 +10,53 @@ export default function TopNav({ activeTab, isCapturing, onNavigate }: Props): R
   const [settingsHovered, setSettingsHovered] = useState(false)
 
   return (
-    <nav style={{
+    <nav className="glass-panel" style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0 var(--sp-4)', height: 44,
-      background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-1)',
-      flexShrink: 0
+      padding: '0 var(--sp-5)', height: 48,
+      borderBottom: '1px solid var(--border-1)',
+      flexShrink: 0,
+      WebkitAppRegion: 'drag' as any
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 160 }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-base)', fontWeight: 700, color: 'var(--ink-1)', letterSpacing: '-0.02em' }}>
+      {/* Logo */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', minWidth: 160, WebkitAppRegion: 'no-drag' as any }}>
+        <span style={{
+          fontFamily: 'var(--font-display)', fontSize: 'var(--text-base)', fontWeight: 800,
+          color: 'var(--accent)', letterSpacing: '-0.03em', textTransform: 'uppercase',
+          fontSize: '0.75rem', letterSpacing: '0.08em'
+        }}>
           Darkscribe
         </span>
       </div>
 
-      <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+      {/* Center nav */}
+      <div style={{ display: 'flex', gap: 'var(--sp-1)', WebkitAppRegion: 'no-drag' as any }}>
         <button
           onClick={() => onNavigate('home')}
           style={{
-            padding: '6px var(--sp-3)', background: 'none',
-            border: 'none', borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
-            fontSize: 'var(--text-sm)', fontWeight: activeTab === 'home' ? 700 : 500,
-            color: activeTab === 'home' ? 'var(--ink-1)' : 'var(--ink-3)',
-            cursor: 'pointer',
-            borderBottom: activeTab === 'home' ? '2px solid var(--primary)' : '2px solid transparent'
+            padding: '6px var(--sp-4)', background: activeTab === 'home' ? 'var(--accent-subtle)' : 'none',
+            border: 'none', borderRadius: 'var(--radius-full)',
+            fontSize: 'var(--text-sm)', fontWeight: activeTab === 'home' ? 600 : 500,
+            color: activeTab === 'home' ? 'var(--accent)' : 'var(--ink-3)',
+            cursor: 'pointer'
           }}
         >
           Home
         </button>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', minWidth: 160, justifyContent: 'flex-end' }}>
+      {/* Right side */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', minWidth: 160, justifyContent: 'flex-end', WebkitAppRegion: 'no-drag' as any }}>
         {isCapturing && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 10px', background: 'var(--positive-subtle)', borderRadius: 'var(--radius-full)', fontSize: 10, fontWeight: 700, color: 'var(--positive)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--positive)', animation: 'pulse 2s infinite' }} />
+          <span style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '3px 12px',
+            background: 'var(--live-glow)',
+            borderRadius: 'var(--radius-full)',
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+            color: 'var(--live-dot)',
+            border: '1px solid rgba(92, 181, 131, 0.2)'
+          }}>
+            <span className="recording-dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--live-dot)' }} />
             LIVE
           </span>
         )}
@@ -50,13 +65,14 @@ export default function TopNav({ activeTab, isCapturing, onNavigate }: Props): R
           onMouseEnter={() => setSettingsHovered(true)}
           onMouseLeave={() => setSettingsHovered(false)}
           style={{
-            background: activeTab === 'settings' ? 'var(--primary-subtle)' : settingsHovered ? 'var(--surface-2)' : 'none',
-            border: activeTab === 'settings' ? '1px solid var(--primary)' : '1px solid transparent',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: 16,
-            color: activeTab === 'settings' ? 'var(--primary)' : settingsHovered ? 'var(--ink-2)' : 'var(--ink-3)',
+            background: activeTab === 'settings' ? 'var(--accent-subtle)' : settingsHovered ? 'var(--surface-3)' : 'none',
+            border: activeTab === 'settings' ? '1px solid var(--border-glow)' : '1px solid transparent',
+            borderRadius: 'var(--radius-full)',
+            fontSize: 'var(--text-sm)',
+            fontWeight: 500,
+            color: activeTab === 'settings' ? 'var(--accent)' : settingsHovered ? 'var(--ink-2)' : 'var(--ink-3)',
             cursor: 'pointer',
-            padding: '4px 8px'
+            padding: '5px 14px'
           }}
           title="Settings"
         >

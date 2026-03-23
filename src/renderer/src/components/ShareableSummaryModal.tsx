@@ -124,7 +124,7 @@ export default function ShareableSummaryModal({ segments, summary, sessionId, se
   }
 
   const modal: React.CSSProperties = {
-    background: 'var(--surface-raised)', borderRadius: 'var(--radius-lg)',
+    background: 'var(--surface-2)', borderRadius: 'var(--radius-lg)',
     boxShadow: 'var(--shadow-xl)', width: 640, maxHeight: '85vh',
     display: 'flex', flexDirection: 'column', overflow: 'hidden'
   }
@@ -157,8 +157,8 @@ export default function ShareableSummaryModal({ segments, summary, sessionId, se
                   <div key={i} style={{
                     display: 'flex', alignItems: 'center', gap: 4,
                     padding: '4px 10px', background: 'var(--primary-subtle)',
-                    border: '1px solid var(--primary)', borderRadius: 'var(--radius-full)',
-                    fontSize: 'var(--text-xs)', color: 'var(--primary)'
+                    border: '1px solid var(--accent)', borderRadius: 'var(--radius-full)',
+                    fontSize: 'var(--text-xs)', color: 'var(--accent)'
                   }}>
                     <span style={{ fontWeight: 600 }}>{a.name}</span>
                     {a.role && <span style={{ color: 'var(--ink-3)' }}>({a.role})</span>}
@@ -182,7 +182,7 @@ export default function ShareableSummaryModal({ segments, summary, sessionId, se
 
           {phase === 'generating' && (
             <div style={{ textAlign: 'center', padding: 'var(--sp-8)' }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid var(--primary)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', margin: '0 auto var(--sp-3)' }} />
+              <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', margin: '0 auto var(--sp-3)' }} />
               <div style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)' }}>Creating shareable summary...</div>
               <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             </div>
@@ -207,7 +207,7 @@ export default function ShareableSummaryModal({ segments, summary, sessionId, se
         <div style={{ padding: 'var(--sp-3) var(--sp-4)', borderTop: '1px solid var(--border-1)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-2)' }}>
           {phase === 'attendees' && (
             <button onClick={generate} disabled={detecting || attendees.length === 0} style={{
-              padding: '8px 20px', background: 'var(--primary)', color: 'white',
+              padding: '8px 20px', background: 'var(--accent)', color: 'var(--accent-ink)',
               border: 'none', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)',
               fontWeight: 600, cursor: 'pointer', opacity: detecting ? 0.6 : 1
             }}>

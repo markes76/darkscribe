@@ -106,8 +106,11 @@ export default function VaultSearchPanel({ onAddToSummary }: Props): React.React
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 'var(--sp-3)' }}>
-      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--sp-2)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 'var(--sp-4)' }}>
+      <div style={{
+        fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--ink-3)',
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--sp-3)'
+      }}>
         Search
       </div>
 
@@ -118,21 +121,22 @@ export default function VaultSearchPanel({ onAddToSummary }: Props): React.React
           onKeyDown={e => { if (e.key === 'Enter') searchVault() }}
           placeholder="Search vault or web..."
           style={{
-            flex: 1, padding: '6px 10px', border: '1px solid var(--border-1)',
-            borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)',
-            background: 'var(--surface-2)', color: 'var(--ink-1)'
+            flex: 1, padding: '8px 12px', border: '1px solid var(--border-1)',
+            borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)',
+            background: 'var(--surface-3)', color: 'var(--ink-1)',
+            boxShadow: 'var(--shadow-inset)'
           }}
         />
         <button onClick={searchVault} disabled={searching} style={{
-          padding: '6px 10px', background: 'var(--primary)', color: 'white',
-          border: 'none', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)',
-          fontWeight: 600, cursor: 'pointer', opacity: searching ? 0.6 : 1
+          padding: '8px 12px', background: 'var(--accent)', color: 'var(--accent-ink)',
+          border: 'none', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)',
+          fontWeight: 700, cursor: 'pointer', opacity: searching ? 0.6 : 1
         }}>
           Vault
         </button>
         <button onClick={searchWeb} disabled={searching || !query.trim()} style={{
-          padding: '6px 10px', background: 'var(--surface-3)', color: 'var(--ink-2)',
-          border: '1px solid var(--border-1)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)',
+          padding: '8px 12px', background: 'var(--surface-3)', color: 'var(--ink-2)',
+          border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)',
           fontWeight: 600, cursor: 'pointer', opacity: (searching || !query.trim()) ? 0.5 : 1
         }}>
           Web

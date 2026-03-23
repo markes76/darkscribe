@@ -354,9 +354,12 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
   if (loading) {
     return (
       <div className="page-enter" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-        <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid var(--primary)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-        <div style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)' }}>Generating summary...</div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={{
+          width: 36, height: 36, borderRadius: '50%',
+          border: '2px solid var(--accent)', borderTopColor: 'transparent',
+          animation: 'spin 0.8s linear infinite'
+        }} />
+        <div style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)', fontWeight: 500 }}>Generating summary...</div>
       </div>
     )
   }
@@ -364,35 +367,45 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
   if (error) {
     return (
       <div className="page-enter" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-        <div style={{ color: 'var(--negative)', fontSize: 'var(--text-sm)' }}>Error: {error}</div>
-        <button onClick={onBack} style={{ padding: '8px 20px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>Back</button>
+        <div style={{ color: 'var(--negative)', fontSize: 'var(--text-sm)', fontWeight: 500 }}>Error: {error}</div>
+        <button onClick={onBack} style={{
+          padding: '10px 24px', background: 'var(--accent)', color: 'var(--accent-ink)',
+          border: 'none', borderRadius: 'var(--radius-lg)', fontWeight: 700, cursor: 'pointer'
+        }}>Back</button>
       </div>
     )
   }
 
   return (
-    <div className="page-enter" style={{ flex: 1, overflow: 'auto', padding: 'var(--sp-6)' }}>
-      <div style={{ maxWidth: 700, margin: '0 auto' }}>
+    <div className="page-enter" style={{ flex: 1, overflow: 'auto', padding: 'var(--sp-8) var(--sp-6)' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--sp-6)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 'var(--sp-8)' }}>
           <div>
-            <h2 style={{ fontSize: 'var(--text-xl)', color: 'var(--ink-1)' }}>Call Summary</h2>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)', marginTop: 4 }}>
-              {sessionName && <span style={{ fontWeight: 600 }}>{sessionName} · </span>}
+            <h2 style={{
+              fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)',
+              fontWeight: 800, color: 'var(--ink-1)', letterSpacing: '-0.03em'
+            }}>
+              Call Summary
+            </h2>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)', marginTop: 6, fontFamily: 'var(--font-mono)', fontWeight: 500 }}>
+              {sessionName && <span style={{ fontWeight: 600, color: 'var(--ink-2)' }}>{sessionName} · </span>}
               {summary?.durationMinutes}min · {summary?.participants.join(', ')}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
             <button
               onClick={saveToVault}
               disabled={savingToVault || savedToVault}
               style={{
-                padding: '8px 16px',
-                background: savedToVault ? 'var(--positive-subtle)' : 'var(--purple-subtle)',
-                color: savedToVault ? 'var(--positive)' : 'var(--purple)',
-                border: `1px solid ${savedToVault ? 'var(--positive)' : 'var(--purple)'}`,
-                borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: savedToVault ? 'default' : 'pointer',
-                opacity: savingToVault ? 0.6 : 1
+                padding: '8px 18px',
+                background: savedToVault ? 'var(--positive-subtle)' : 'var(--accent)',
+                color: savedToVault ? 'var(--positive)' : 'var(--accent-ink)',
+                border: savedToVault ? '1px solid rgba(92,181,131,0.2)' : 'none',
+                borderRadius: 'var(--radius-lg)', fontSize: 'var(--text-sm)', fontWeight: 700,
+                cursor: savedToVault ? 'default' : 'pointer',
+                opacity: savingToVault ? 0.6 : 1,
+                boxShadow: savedToVault ? 'none' : 'var(--shadow-glow-amber)'
               }}
             >
               {savedToVault ? 'Saved' : savingToVault ? 'Saving...' : 'Save to Vault'}
@@ -401,8 +414,8 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
               <button
                 onClick={() => openInObsidian(savedNotePath)}
                 style={{
-                  padding: '8px 16px', background: 'none', color: 'var(--purple)',
-                  border: '1px solid var(--purple)', borderRadius: 'var(--radius-md)',
+                  padding: '8px 18px', background: 'var(--surface-3)', color: 'var(--purple)',
+                  border: '1px solid var(--border-1)', borderRadius: 'var(--radius-lg)',
                   fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 600
                 }}
               >
@@ -410,16 +423,25 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
               </button>
             )}
             <button onClick={() => setShowShareable(true)} style={{
-              padding: '8px 16px', background: 'var(--surface-raised)', color: 'var(--ink-2)',
-              border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)', cursor: 'pointer'
+              padding: '8px 18px', background: 'var(--surface-3)', color: 'var(--ink-2)',
+              border: '1px solid var(--border-1)', borderRadius: 'var(--radius-lg)',
+              fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 500
             }}>
               Shareable Summary
             </button>
-            <button onClick={onBack} style={{ padding: '8px 16px', background: 'var(--surface-2)', color: 'var(--ink-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', cursor: 'pointer' }}>
+            <button onClick={onBack} style={{
+              padding: '8px 18px', background: 'var(--surface-3)', color: 'var(--ink-3)',
+              border: '1px solid var(--border-1)', borderRadius: 'var(--radius-lg)',
+              fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 500
+            }}>
               Done
             </button>
-            <button onClick={onNewCall} style={{ padding: '8px 16px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer' }}>
+            <button onClick={onNewCall} style={{
+              padding: '8px 18px', background: 'var(--accent)', color: 'var(--accent-ink)',
+              border: 'none', borderRadius: 'var(--radius-lg)',
+              fontSize: 'var(--text-sm)', fontWeight: 700, cursor: 'pointer',
+              boxShadow: 'var(--shadow-glow-amber)'
+            }}>
               New Call
             </button>
           </div>
@@ -456,7 +478,7 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
             <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 'var(--sp-2)' }}>Key Topics</h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
               {summary.keyTopics.map((topic, i) => (
-                <span key={i} style={{ padding: '2px 10px', background: 'var(--primary-subtle)', color: 'var(--primary)', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>{topic}</span>
+                <span key={i} style={{ padding: '2px 10px', background: 'var(--primary-subtle)', color: 'var(--accent)', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>{topic}</span>
               ))}
             </div>
           </div>
@@ -468,7 +490,7 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
             <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 'var(--sp-2)' }}>Action Items</h3>
             {summary.actionItems.map((item, i) => (
               <div key={i} style={{ display: 'flex', gap: 'var(--sp-2)', marginBottom: 'var(--sp-1)', fontSize: 'var(--text-sm)', color: 'var(--ink-1)' }}>
-                <span style={{ color: 'var(--primary)', fontWeight: 700 }}>-</span>
+                <span style={{ color: 'var(--accent)', fontWeight: 700 }}>-</span>
                 <span>{item.item}{item.owner ? ` (${item.owner})` : ''}</span>
               </div>
             ))}
@@ -563,7 +585,7 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
               ) : null}
               {summary.sentiment.recommendation && (
                 <div style={{ padding: 'var(--sp-3)', background: 'var(--primary-subtle)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)', color: 'var(--ink-1)' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--primary)' }}>Recommendation: </span>
+                  <span style={{ fontWeight: 700, color: 'var(--accent)' }}>Recommendation: </span>
                   {summary.sentiment.recommendation}
                 </div>
               )}
@@ -583,7 +605,7 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)', marginBottom: 4 }}>Query: {ws.query}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.5 }}>{ws.snippet.substring(0, 200)}{ws.snippet.length > 200 ? '...' : ''}</div>
                 {ws.url && (
-                  <button onClick={() => window.darkscribe.shell.openUrl(ws.url)} style={{ marginTop: 4, padding: 0, background: 'none', border: 'none', color: 'var(--primary)', fontSize: 'var(--text-xs)', cursor: 'pointer', textDecoration: 'underline' }}>
+                  <button onClick={() => window.darkscribe.shell.openUrl(ws.url)} style={{ marginTop: 4, padding: 0, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 'var(--text-xs)', cursor: 'pointer', textDecoration: 'underline' }}>
                     Open source
                   </button>
                 )}

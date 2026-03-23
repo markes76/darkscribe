@@ -131,7 +131,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
     { id: 'advanced', label: 'Advanced' }
   ]
 
-  const card: React.CSSProperties = { padding: 'var(--sp-4)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-3)' }
+  const card: React.CSSProperties = { padding: 'var(--sp-4)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-3)' }
   const inputStyle: React.CSSProperties = { padding: '6px 10px', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', background: 'var(--surface-2)', color: 'var(--ink-1)', width: '100%' }
   const btnSm: React.CSSProperties = { padding: '4px 12px', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)', color: 'var(--ink-2)', cursor: 'pointer' }
 
@@ -146,7 +146,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
             padding: '6px var(--sp-3)', background: activeSection === s.id ? 'var(--primary-subtle)' : 'none',
             border: 'none', borderRadius: 'var(--radius-sm)', textAlign: 'left',
             fontSize: 'var(--text-sm)', fontWeight: activeSection === s.id ? 600 : 400,
-            color: activeSection === s.id ? 'var(--primary)' : 'var(--ink-2)', cursor: 'pointer'
+            color: activeSection === s.id ? 'var(--accent)' : 'var(--ink-2)', cursor: 'pointer'
           }}>{s.label}</button>
         ))}
       </div>
@@ -166,7 +166,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                 {openaiEditing ? (
                   <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                     <input value={openaiNewKey} onChange={e => setOpenaiNewKey(e.target.value)} placeholder="sk-..." style={inputStyle} />
-                    <button onClick={saveOpenaiKey} style={{ ...btnSm, background: 'var(--primary)', color: 'white', border: 'none' }}>Save</button>
+                    <button onClick={saveOpenaiKey} style={{ ...btnSm, background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none' }}>Save</button>
                   </div>
                 ) : (
                   <button onClick={() => setOpenaiEditing(true)} style={btnSm}>{openaiOk ? 'Change' : 'Set Key'}</button>
@@ -180,7 +180,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                 {tavilyEditing ? (
                   <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                     <input value={tavilyNewKey} onChange={e => setTavilyNewKey(e.target.value)} placeholder="tvly-..." style={inputStyle} />
-                    <button onClick={saveTavilyKey} style={{ ...btnSm, background: 'var(--primary)', color: 'white', border: 'none' }}>Save</button>
+                    <button onClick={saveTavilyKey} style={{ ...btnSm, background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none' }}>Save</button>
                   </div>
                 ) : (
                   <button onClick={() => setTavilyEditing(true)} style={btnSm}>{tavilyOk ? 'Change' : 'Set Key'}</button>
@@ -205,7 +205,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                   {obsidianApiKeyEditing ? (
                     <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                       <input value={obsidianNewApiKey} onChange={e => setObsidianNewApiKey(e.target.value)} placeholder="REST API key..." style={inputStyle} />
-                      <button onClick={saveObsidianApiKey} style={{ ...btnSm, background: 'var(--primary)', color: 'white', border: 'none' }}>Save</button>
+                      <button onClick={saveObsidianApiKey} style={{ ...btnSm, background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none' }}>Save</button>
                     </div>
                   ) : (
                     <button onClick={() => setObsidianApiKeyEditing(true)} style={btnSm}>Change API Key</button>
@@ -295,10 +295,10 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                   {(['auto', 'preferred'] as const).map(m => (
                     <button key={m} onClick={() => setMode(m)} style={{
                       padding: '8px 16px', background: transcriptionMode === m ? 'var(--primary-subtle)' : 'var(--surface-2)',
-                      border: `1px solid ${transcriptionMode === m ? 'var(--primary)' : 'var(--border-1)'}`,
+                      border: `1px solid ${transcriptionMode === m ? 'var(--accent)' : 'var(--border-1)'}`,
                       borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)',
                       fontWeight: transcriptionMode === m ? 600 : 400,
-                      color: transcriptionMode === m ? 'var(--primary)' : 'var(--ink-2)', cursor: 'pointer'
+                      color: transcriptionMode === m ? 'var(--accent)' : 'var(--ink-2)', cursor: 'pointer'
                     }}>
                       {m === 'auto' ? 'Auto-detect' : 'Preferred Languages'}
                     </button>
@@ -323,9 +323,9 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                           <button key={lang.code} onClick={() => toggleLanguage(lang.code)} style={{
                             padding: '4px 12px',
                             background: selected ? 'var(--primary-subtle)' : 'var(--surface-2)',
-                            border: `1px solid ${selected ? 'var(--primary)' : 'var(--border-1)'}`,
+                            border: `1px solid ${selected ? 'var(--accent)' : 'var(--border-1)'}`,
                             borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)',
-                            color: selected ? 'var(--primary)' : 'var(--ink-3)',
+                            color: selected ? 'var(--accent)' : 'var(--ink-3)',
                             fontWeight: selected ? 600 : 400, cursor: 'pointer'
                           }}>
                             {lang.label}
@@ -345,10 +345,10 @@ export default function Settings({ onBack }: Props): React.ReactElement {
               <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                 {(['system', 'light', 'dark'] as const).map(t => (
                   <button key={t} onClick={() => changeTheme(t)} style={{
-                    padding: '8px 16px', background: theme === t ? 'var(--primary-subtle)' : 'var(--surface-raised)',
-                    border: `1px solid ${theme === t ? 'var(--primary)' : 'var(--border-1)'}`,
+                    padding: '8px 16px', background: theme === t ? 'var(--primary-subtle)' : 'var(--surface-2)',
+                    border: `1px solid ${theme === t ? 'var(--accent)' : 'var(--border-1)'}`,
                     borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)',
-                    fontWeight: theme === t ? 600 : 400, color: theme === t ? 'var(--primary)' : 'var(--ink-2)',
+                    fontWeight: theme === t ? 600 : 400, color: theme === t ? 'var(--accent)' : 'var(--ink-2)',
                     cursor: 'pointer', textTransform: 'capitalize'
                   }}>{t}</button>
                 ))}

@@ -20,7 +20,7 @@ export default function VoiceNoteSetup({ onStart, onCancel }: Props): React.Reac
 
   return (
     <div className="page-enter" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-8)' }}>
-      <div style={{ width: 460, background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-8)', boxShadow: 'var(--shadow-md)' }}>
+      <div style={{ width: 460, background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-8)', boxShadow: 'var(--shadow-md)' }}>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--text-xl)', color: 'var(--ink-1)', marginBottom: 'var(--sp-2)' }}>Voice Note</h2>
         <p style={{ color: 'var(--ink-3)', fontSize: 'var(--text-sm)', marginBottom: 'var(--sp-6)' }}>
           Think out loud. Darkscribe will capture and organize your thoughts.
@@ -70,7 +70,7 @@ export default function VoiceNoteSetup({ onStart, onCancel }: Props): React.Reac
             fontSize: 'var(--text-sm)', cursor: 'pointer'
           }}>Cancel</button>
           <button onClick={() => onStart(topic.trim(), category)} style={{
-            padding: '10px 24px', background: 'var(--purple)', color: 'white',
+            padding: '10px 24px', background: 'var(--purple)', color: 'var(--accent-ink)',
             border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700,
             fontSize: 'var(--text-sm)', cursor: 'pointer', boxShadow: 'var(--shadow-sm)'
           }}>Start Recording</button>
