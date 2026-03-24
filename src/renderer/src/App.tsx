@@ -249,29 +249,45 @@ export default function App(): React.ReactElement {
       )
     }
 
+    // For non-call states when recording is active, MainApp is rendered
+    // separately below (kept alive but hidden) — don't render it here too
     if ((state === 'call' || state === 'voice-call') && activeSession) {
-      return (
-        <MainApp
-          sessionId={activeSession.id}
-          sessionName={activeSession.name}
-          onEndCall={handleCallEnd}
-          onBack={() => {
-            // Go home but keep session alive — recording continues
-            setPrevState(state)
-            setState('home')
-          }}
-        />
-      )
+      // MainApp is rendered in the always-alive slot below
+      return null
     }
 
     return null
   }
 
+  // Is the call view currently visible?
+  const callViewVisible = (state === 'call' || state === 'voice-call') && !!activeSession
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--surface-1)', paddingTop: 28 }}>
       <TopNav activeTab={activeTab} isCapturing={isRecording} onNavigate={handleNav} />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {renderContent()}
+        {/* Non-call content (home, settings, summary, etc.) */}
+        {!callViewVisible && renderContent()}
+
+        {/* MainApp stays mounted for the entire recording lifecycle.
+            Hidden via CSS when user navigates away — preserves WebSocket
+            connections, transcript state, and audio capture. */}
+        {isRecording && activeSession && (
+          <div style={{
+            flex: 1, minHeight: 0, display: callViewVisible ? 'flex' : 'none',
+            flexDirection: 'column'
+          }}>
+            <MainApp
+              sessionId={activeSession.id}
+              sessionName={activeSession.name}
+              onEndCall={handleCallEnd}
+              onBack={() => {
+                setPrevState(state)
+                setState('home')
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Toast notification */}
