@@ -34,6 +34,8 @@ export default function App(): React.ReactElement {
   const [completedWebSearches, setCompletedWebSearches] = useState<WebSearchResult[]>([])
   const [voiceNote, setVoiceNote] = useState<VoiceNoteState>({ topic: '', category: 'Ideas' })
   const [toast, setToast] = useState<{ message: string; sessionId?: string } | null>(null)
+  // Track previous state before navigation (for returning to active call)
+  const [prevState, setPrevState] = useState<AppState | null>(null)
 
   // Listen for background processing completion (toast when not on summary screen)
   useEffect(() => {
@@ -94,9 +96,6 @@ export default function App(): React.ReactElement {
   if (state === 'onboarding') {
     return <OnboardingFlow onComplete={() => { window.darkscribe.config.write({ onboarding_complete: true }); setState('home') }} />
   }
-
-  // Track previous state before navigation (for returning to active call)
-  const [prevState, setPrevState] = useState<AppState | null>(null)
 
   const handleNav = (tab: string) => {
     if (tab === 'settings') {
