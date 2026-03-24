@@ -19,6 +19,7 @@ export interface AppConfig {
   preferred_languages?: string[]      // ISO 639-1 codes (e.g. ["en", "he"])
   auto_save_to_vault?: boolean        // Auto-save summary + transcript to vault after generation
   save_incomplete_sessions?: boolean  // Also auto-save sessions < 30s or without summary
+  auto_update_vault_after_processing?: boolean  // Update vault notes with improved Whisper/Gemini results
 }
 
 const DEFAULTS: AppConfig = {

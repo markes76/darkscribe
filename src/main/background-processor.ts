@@ -8,8 +8,9 @@ import { keychainGet } from './keychain'
 import { readConfig } from './config'
 import {
   saveTranscript, saveSummary, loadTranscript, loadSummary,
-  saveMetadata, loadMetadata, updateSession
+  saveMetadata, loadMetadata, updateSession, getSession
 } from './session-manager'
+import { saveNote, testConnection } from './obsidian-api'
 import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
@@ -173,6 +174,94 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+function buildVaultSummaryMarkdown(
+  summary: Record<string, unknown>,
+  whisperResult: WhisperResult,
+  sessionName?: string,
+  participants?: string,
+  processedWith?: string,
+  geminiInsights?: Record<string, unknown> | null
+): string {
+  const date = new Date().toISOString().split('T')[0]
+  const durationMin = Math.round(whisperResult.duration / 60)
+  const participantList = participants ? participants.split(',').map(p => p.trim()).filter(Boolean) : (summary.participants as string[] || [])
+
+  const lines: string[] = [
+    '---',
+    'tags: [call, summary]',
+    `date: "${date}"`,
+    sessionName ? `title: "${sessionName}"` : '',
+    participantList.length ? `participants: [${participantList.map(p => `"${p}"`).join(', ')}]` : 'participants: []',
+    `duration: "${durationMin}min"`,
+    `recording_status: "available"`,
+    `recording_duration: "${durationMin}min"`,
+    `transcript_version: "final"`,
+    `processing_status: "completed"`,
+    `processed_with: "${processedWith || 'whisper-1 + gpt-4o'}"`,
+    `processed_at: "${new Date().toISOString()}"`,
+    '---',
+    '',
+    '## Overview',
+    (summary.overview as string) || '',
+    ''
+  ]
+
+  const keyTopics = summary.keyTopics as string[] | undefined
+  if (keyTopics?.length) lines.push('## Key Topics', ...keyTopics.map(t => `- ${t}`), '')
+
+  const actionItems = summary.actionItems as Array<{ item: string; owner?: string }> | undefined
+  if (actionItems?.length) lines.push('## Action Items', ...actionItems.map(a => `- [ ] ${a.item}${a.owner ? ` (@${a.owner})` : ''}`), '')
+
+  const decisions = summary.decisions as string[] | undefined
+  if (decisions?.length) lines.push('## Decisions', ...decisions.map(d => `- ${d}`), '')
+
+  const followUps = summary.followUps as string[] | undefined
+  if (followUps?.length) lines.push('## Follow-ups', ...followUps.map(f => `- ${f}`), '')
+
+  // Voice insights from Gemini
+  if (geminiInsights) {
+    lines.push('## Voice Insights (Gemini)', '')
+    if ((geminiInsights as any).overallTone) lines.push(`**Tone:** ${(geminiInsights as any).overallTone}`, '')
+    if ((geminiInsights as any).energyLevel) lines.push(`**Energy:** ${(geminiInsights as any).energyLevel}`, '')
+    if ((geminiInsights as any).speakerDynamics) lines.push(`**Dynamics:** ${(geminiInsights as any).speakerDynamics}`, '')
+  }
+
+  return lines.filter(l => l !== undefined).join('\n')
+}
+
+function buildVaultTranscriptMarkdown(
+  whisperResult: WhisperResult,
+  summary: Record<string, unknown>,
+  sessionName?: string,
+  participants?: string,
+  processedWith?: string
+): string {
+  const date = new Date().toISOString().split('T')[0]
+  const durationMin = Math.round(whisperResult.duration / 60)
+
+  const lines: string[] = [
+    '---',
+    'tags: [call, transcript]',
+    `date: "${date}"`,
+    sessionName ? `title: "${sessionName}"` : '',
+    `duration: "${durationMin}min"`,
+    `transcript_version: "final"`,
+    `processed_with: "${processedWith || 'whisper-1'}"`,
+    `processed_at: "${new Date().toISOString()}"`,
+    '---',
+    '',
+    '## Transcript',
+    ''
+  ]
+
+  for (const seg of whisperResult.segments) {
+    const time = formatTime(seg.start)
+    lines.push(`*(${time})* ${seg.text.trim()}`, '')
+  }
+
+  return lines.join('\n')
+}
+
 export async function startBackgroundProcessing(
   sessionId: string,
   audioFilePath: string,
@@ -269,7 +358,49 @@ async function processSession(job: ProcessingJob): Promise<void> {
       saveSummary(sessionId, mergedSummary)
     }
 
-    // Step 4: Mark complete
+    // Step 4: Sync to Obsidian vault if auto-update enabled
+    const config = readConfig()
+    if (config.auto_update_vault_after_processing !== false) {
+      try {
+        const session = getSession(sessionId)
+        const lastCall = session?.calls[session.calls.length - 1]
+        if (lastCall?.vaultNotePath) {
+          const connResult = await testConnection()
+          if (connResult.ok) {
+            const prefix = config.vault_subfolder || ''
+            const vp = (p: string) => prefix ? `${prefix}/${p}` : p
+
+            // Build improved summary markdown
+            const finalSummary = summary as Record<string, unknown>
+            const processedWith = geminiInsights ? 'whisper-1 + gpt-4o + gemini' : 'whisper-1 + gpt-4o'
+            const summaryMd = buildVaultSummaryMarkdown(finalSummary, whisperResult, sessionName, participants, processedWith, geminiInsights)
+
+            // Build improved transcript markdown
+            const transcriptMd = buildVaultTranscriptMarkdown(whisperResult, finalSummary, sessionName, participants, processedWith)
+
+            // Update the vault notes
+            const summaryPath = lastCall.vaultNotePath
+            await saveNote(summaryPath, summaryMd)
+
+            // Try to update transcript note too (derive path from summary path)
+            const txPath = summaryPath.replace('/Summaries/', '/Transcripts/')
+            if (txPath !== summaryPath) {
+              await saveNote(txPath, transcriptMd).catch(() => {})
+            }
+
+            console.log(`[BgProcessor] Vault updated for session ${sessionId}`)
+            notifyRenderer('processing:vault-updated', { sessionId, sessionName, vaultNotePath: summaryPath })
+          } else {
+            console.log(`[BgProcessor] Vault not connected, skipping update for ${sessionId}`)
+          }
+        }
+      } catch (e) {
+        console.error(`[BgProcessor] Vault update failed for ${sessionId}:`, (e as Error).message)
+        // Don't fail the whole pipeline for vault sync failure
+      }
+    }
+
+    // Step 5: Mark complete
     job.status = 'complete'
     await updateProcessingStatus(sessionId, 'completed')
     notifyRenderer('processing:complete', { sessionId, sessionName })

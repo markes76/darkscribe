@@ -176,6 +176,9 @@ export default function Settings({ onBack }: Props): React.ReactElement {
   // Storage
   const [retentionDays, setRetentionDays] = useState(30)
 
+  // Vault update
+  const [autoUpdateVault, setAutoUpdateVault] = useState(true)
+
   // Language
   const [transcriptionMode, setTranscriptionMode] = useState<'auto' | 'preferred'>('auto')
   const [preferredLanguages, setPreferredLanguages] = useState<string[]>([])
@@ -198,6 +201,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
       setAutoSaveToVault((c.auto_save_to_vault as boolean) ?? false)
       setSaveIncomplete((c.save_incomplete_sessions as boolean) ?? false)
       setRetentionDays((c.recordings_retention_days as number) ?? 30)
+      setAutoUpdateVault((c.auto_update_vault_after_processing as boolean) ?? true)
     })
   }, [])
 
@@ -469,6 +473,22 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                       >{saveIncomplete ? 'ON' : 'OFF'}</button>
                     </div>
                   )}
+                  {/* Auto-update vault after enhanced analysis */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--sp-3)' }}>
+                    <div>
+                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--ink-2)' }}>Auto-update vault after enhanced analysis</div>
+                      <div style={{ fontSize: 9, color: 'var(--ink-4)', marginTop: 2 }}>Automatically overwrites vault notes with improved Whisper/Gemini results</div>
+                    </div>
+                    <button
+                      onClick={async () => { const val = !autoUpdateVault; setAutoUpdateVault(val); await window.darkscribe.config.write({ auto_update_vault_after_processing: val }) }}
+                      style={{
+                        padding: '2px 10px', background: autoUpdateVault ? 'var(--positive-subtle)' : 'var(--surface-2)',
+                        border: `1px solid ${autoUpdateVault ? 'var(--positive)' : 'var(--border-1)'}`,
+                        borderRadius: 'var(--radius-xs)', fontSize: 'var(--text-xs)', fontWeight: 600,
+                        color: autoUpdateVault ? 'var(--positive)' : 'var(--ink-4)', cursor: 'pointer'
+                      }}
+                    >{autoUpdateVault ? 'ON' : 'OFF'}</button>
+                  </div>
                 </div>
               </div>
             </>

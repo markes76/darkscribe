@@ -150,6 +150,11 @@ const api = {
       const listener = (_: Electron.IpcRendererEvent, data: { sessionId: string; error: string }) => cb(data)
       ipcRenderer.on('processing:failed', listener)
       return () => ipcRenderer.removeListener('processing:failed', listener)
+    },
+    onVaultUpdated: (cb: (data: { sessionId: string; sessionName?: string; vaultNotePath?: string }) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, data: { sessionId: string; sessionName?: string; vaultNotePath?: string }) => cb(data)
+      ipcRenderer.on('processing:vault-updated', listener)
+      return () => ipcRenderer.removeListener('processing:vault-updated', listener)
     }
   },
   web: {

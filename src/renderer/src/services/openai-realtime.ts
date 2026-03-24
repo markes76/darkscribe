@@ -100,9 +100,11 @@ class RealtimeChannel {
 
   private sendSessionConfig(): void {
     const transcriptionConfig: Record<string, unknown> = { model: 'whisper-1' }
-    // Always send primary language when preferred languages are set (even with multiple)
-    // This constrains Whisper's decoder to the primary language, reducing hallucinations
-    if (this.languages.length > 0 && this.languages[0] !== 'auto') {
+    // ONLY set language param for single-language users — this constrains Whisper's decoder
+    // For multilingual users (2+ languages), OMIT the param to let Whisper auto-detect
+    // per segment. Setting it for multilingual causes the "language lock" bug where
+    // one detected language forces all subsequent audio into that language.
+    if (this.languages.length === 1 && this.languages[0] !== 'auto') {
       transcriptionConfig.language = this.languages[0]
     }
 
@@ -113,7 +115,7 @@ class RealtimeChannel {
       langNote = `\nLanguage: Transcribe ONLY in ${langCode}. If you hear speech in any other language, transcribe it phonetically in ${langCode}. Never output text in any other language or script.`
     } else if (this.languages.length > 1) {
       const langCodes = this.languages.map(l => l.toUpperCase()).join(' and ')
-      langNote = `\nLanguage: Transcribe ONLY in ${langCodes}. The speakers may switch between these languages. Transcribe in the language being spoken. Do not translate. If you hear speech in any other language, transcribe it phonetically in one of these languages. Never output text in any other language or script.`
+      langNote = `\nLanguage constraint: The speaker uses ${langCodes} interchangeably. Transcribe each sentence in the language it is actually spoken in. Do NOT translate. Do NOT force all text into one language. If a sentence starts in one language, transcribe it entirely in that language. Each segment should match the language that was actually spoken. Do NOT lock into a single language — speakers switch frequently. If you hear speech in a language other than ${langCodes}, transcribe it phonetically in one of these languages.`
     }
 
     const channelNote = this.channel === 'sys'

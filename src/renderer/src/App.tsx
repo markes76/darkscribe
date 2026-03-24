@@ -38,13 +38,16 @@ export default function App(): React.ReactElement {
   // Listen for background processing completion (toast when not on summary screen)
   useEffect(() => {
     const removeComplete = window.darkscribe.processing.onComplete((data) => {
-      // Only show toast if user is NOT currently viewing this session's summary
       if (state !== 'summary' || activeSession?.id !== data.sessionId) {
         setToast({ message: `Summary ready: ${data.sessionName || 'Recording'}`, sessionId: data.sessionId })
         setTimeout(() => setToast(null), 6000)
       }
     })
-    return () => removeComplete()
+    const removeVaultUpdated = window.darkscribe.processing.onVaultUpdated((data) => {
+      setToast({ message: `Enhanced summary saved to vault: ${data.sessionName || 'Recording'}`, sessionId: data.sessionId })
+      setTimeout(() => setToast(null), 6000)
+    })
+    return () => { removeComplete(); removeVaultUpdated() }
   }, [state, activeSession?.id])
 
   useEffect(() => {
@@ -92,33 +95,97 @@ export default function App(): React.ReactElement {
     return <OnboardingFlow onComplete={() => { window.darkscribe.config.write({ onboarding_complete: true }); setState('home') }} />
   }
 
+  // Track previous state before navigation (for returning to active call)
+  const [prevState, setPrevState] = useState<AppState | null>(null)
+
   const handleNav = (tab: string) => {
-    if (tab === 'home') { setActiveSession(null); setState('home') }
-    else if (tab === 'settings') setState('settings')
+    if (tab === 'settings') {
+      setPrevState(state)
+      setState('settings')
+    } else if (tab === 'home') {
+      // If recording is active, return to the live call view instead of home
+      if (activeSession && (prevState === 'call' || prevState === 'voice-call')) {
+        setState(prevState)
+        setPrevState(null)
+      } else {
+        setActiveSession(null)
+        setPrevState(null)
+        setState('home')
+      }
+    }
   }
 
-  const isRecording = (state === 'call' || state === 'voice-call') && !!activeSession
+  const isRecording = !!activeSession && (state === 'call' || state === 'voice-call' || ((state === 'settings' || state === 'home') && (prevState === 'call' || prevState === 'voice-call')))
   const activeTab: 'home' | 'call' | 'settings' = (state === 'home' || state === 'setup' || state === 'voice-setup') ? 'home' : state === 'settings' ? 'settings' : 'call'
 
   const renderContent = () => {
-    if (state === 'settings') return <Settings onBack={() => setState('home')} />
+    if (state === 'settings') return <Settings onBack={() => {
+      // Return to active recording if one exists
+      if (activeSession && (prevState === 'call' || prevState === 'voice-call')) {
+        setState(prevState)
+        setPrevState(null)
+      } else {
+        setState('home')
+        setPrevState(null)
+      }
+    }} />
 
     if (state === 'home') {
       return (
-        <SessionList
-          onNewCall={() => setState('setup')}
-          onNewVoiceNote={() => setState('voice-setup')}
-          onSelectSession={async (session) => {
-            // Load session data from disk and open in review mode
-            const transcript = await window.darkscribe.session.loadTranscript(session.id) as any[] | null
-            const searches = await window.darkscribe.session.loadWebSearches(session.id) as any[] | null
-            setCompletedSegments(transcript ?? [])
-            setCompletedWebSearches(searches ?? [])
-            setCompletedAudioFile(null)
-            setActiveSession({ id: session.id, name: session.name })
-            setState('review')
-          }}
-        />
+        <>
+          {/* Recording in progress banner */}
+          {isRecording && activeSession && (
+            <div
+              onClick={() => { setState(prevState === 'voice-call' ? 'voice-call' : 'call'); setPrevState(null) }}
+              style={{
+                padding: 'var(--sp-3) var(--sp-5)', background: 'var(--negative-subtle)',
+                border: '1px solid rgba(217,83,79,0.3)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 'var(--sp-3)',
+                margin: '0 var(--sp-4) var(--sp-4)'
+              }}
+            >
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%', background: 'var(--negative)',
+                animation: 'breathe 2s infinite', flexShrink: 0
+              }} />
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', fontWeight: 600, flex: 1 }}>
+                Recording in progress: {activeSession.name || 'Untitled'}
+              </span>
+              <span style={{
+                padding: '4px 12px', background: 'var(--negative)', color: 'white',
+                borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 700
+              }}>
+                Return to Call
+              </span>
+            </div>
+          )}
+          <SessionList
+            onNewCall={() => setState('setup')}
+            onNewVoiceNote={() => setState('voice-setup')}
+            onSelectSession={async (session) => {
+              // If this is the active recording session, return to live call
+              if (activeSession && session.id === activeSession.id && isRecording) {
+                setState(prevState === 'voice-call' ? 'voice-call' : 'call')
+                setPrevState(null)
+                return
+              }
+              // Check if session is still recording (shouldn't happen, but guard)
+              const meta = await window.darkscribe.session.loadMetadata(session.id) as any
+              if (meta?.status === 'recording') {
+                // Can't view an in-progress session from another recording
+                return
+              }
+              // Load session data from disk and open in review mode
+              const transcript = await window.darkscribe.session.loadTranscript(session.id) as any[] | null
+              const searches = await window.darkscribe.session.loadWebSearches(session.id) as any[] | null
+              setCompletedSegments(transcript ?? [])
+              setCompletedWebSearches(searches ?? [])
+              setCompletedAudioFile(null)
+              setActiveSession({ id: session.id, name: session.name })
+              setState('review')
+            }}
+          />
+        </>
       )
     }
 

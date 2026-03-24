@@ -236,7 +236,16 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
               setSavedNotePath(lastCall.vaultNotePath)
             }
           } else {
-            setError('No saved summary found. The session data may be incomplete.')
+            // Check session status — don't show error for recording/processing sessions
+            const meta = await window.darkscribe.session.loadMetadata(sessionId) as any
+            if (meta?.status === 'recording') {
+              setError('This session is still recording. Return to the live call view.')
+            } else if (meta?.processing_status === 'processing') {
+              setProcessingStatus('processing')
+              setProcessingMessage('Background analysis in progress...')
+            } else {
+              setError('No saved summary found. The session data may be incomplete.')
+            }
           }
           setLoading(false)
           return
@@ -487,6 +496,21 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
                 }}
               >
                 Open in Obsidian
+              </button>
+            )}
+            {savedToVault && processingStatus === 'completed' && (
+              <button
+                onClick={async () => {
+                  // Re-save to vault with the improved version
+                  await saveToVault()
+                }}
+                style={{
+                  padding: '8px 18px', background: 'var(--positive-subtle)', color: 'var(--positive)',
+                  border: '1px solid rgba(92,181,131,0.2)', borderRadius: 'var(--radius-lg)',
+                  fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 600
+                }}
+              >
+                Update Obsidian
               </button>
             )}
             <button onClick={() => setShowShareable(true)} style={{
