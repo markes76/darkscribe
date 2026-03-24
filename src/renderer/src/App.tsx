@@ -98,14 +98,23 @@ export default function App(): React.ReactElement {
   }
 
   const handleNav = (tab: string) => {
+    const currentlyRecording = state === 'call' || state === 'voice-call' ||
+      (prevState === 'call' || prevState === 'voice-call')
+
     if (tab === 'settings') {
-      setPrevState(state)
+      // Remember where we came from so we can return
+      if (state === 'call' || state === 'voice-call') {
+        setPrevState(state)
+      }
       setState('settings')
     } else if (tab === 'home') {
-      // If recording is active, return to the live call view instead of home
-      if (activeSession && (prevState === 'call' || prevState === 'voice-call')) {
-        setState(prevState)
-        setPrevState(null)
+      if (currentlyRecording && activeSession) {
+        // Recording is active — go to home but keep activeSession alive
+        // so user can return via banner or session card click
+        if (state === 'call' || state === 'voice-call') {
+          setPrevState(state)
+        }
+        setState('home')
       } else {
         setActiveSession(null)
         setPrevState(null)
@@ -246,7 +255,11 @@ export default function App(): React.ReactElement {
           sessionId={activeSession.id}
           sessionName={activeSession.name}
           onEndCall={handleCallEnd}
-          onBack={() => { setActiveSession(null); setState('home') }}
+          onBack={() => {
+            // Go home but keep session alive — recording continues
+            setPrevState(state)
+            setState('home')
+          }}
         />
       )
     }
