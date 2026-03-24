@@ -218,12 +218,53 @@ function buildVaultSummaryMarkdown(
   const followUps = summary.followUps as string[] | undefined
   if (followUps?.length) lines.push('## Follow-ups', ...followUps.map(f => `- ${f}`), '')
 
+  // Sentiment Analysis
+  const sentiment = summary.sentiment as Record<string, unknown> | undefined
+  if (sentiment?.overallTone) {
+    lines.push('## Sentiment Analysis', '')
+    lines.push(`**Overall Tone:** ${sentiment.overallTone}`, '')
+    if (sentiment.emotionalArc) lines.push(`**Emotional Arc:** ${sentiment.emotionalArc}`, '')
+    if (sentiment.participantDynamics) lines.push(`**Participant Dynamics:** ${sentiment.participantDynamics}`, '')
+    if (sentiment.engagementLevel) lines.push(`**Engagement:** ${sentiment.engagementLevel}`, '')
+
+    const topicSentiments = sentiment.topicSentiments as Array<{ topic: string; sentiment: string; detail: string }> | undefined
+    if (topicSentiments?.length) {
+      lines.push('### Sentiment by Topic')
+      for (const ts of topicSentiments) lines.push(`- **${ts.topic}** — *${ts.sentiment}*: ${ts.detail}`)
+      lines.push('')
+    }
+
+    const keyMoments = sentiment.keyMoments as Array<{ topic: string; sentiment: string; indicator: string }> | undefined
+    if (keyMoments?.length) {
+      lines.push('### Key Moments')
+      for (const km of keyMoments) lines.push(`- **${km.topic}** [${km.sentiment}]: ${km.indicator}`)
+      lines.push('')
+    }
+
+    const positiveSignals = sentiment.positiveSignals as string[] | undefined
+    if (positiveSignals?.length) lines.push('### Positive Signals', ...positiveSignals.map(s => `- ${s}`), '')
+    const concerns = sentiment.concerns as string[] | undefined
+    if (concerns?.length) lines.push('### Concerns Detected', ...concerns.map(c => `- ${c}`), '')
+    const risks = sentiment.risksDetected as string[] | undefined
+    if (risks?.length) lines.push('### Risks', ...risks.map(r => `- ${r}`), '')
+    if (sentiment.recommendation) lines.push(`**Recommendation:** ${sentiment.recommendation}`, '')
+  }
+
   // Voice insights from Gemini
   if (geminiInsights) {
     lines.push('## Voice Insights (Gemini)', '')
     if ((geminiInsights as any).overallTone) lines.push(`**Tone:** ${(geminiInsights as any).overallTone}`, '')
     if ((geminiInsights as any).energyLevel) lines.push(`**Energy:** ${(geminiInsights as any).energyLevel}`, '')
     if ((geminiInsights as any).speakerDynamics) lines.push(`**Dynamics:** ${(geminiInsights as any).speakerDynamics}`, '')
+  }
+
+  // Full Transcript
+  if (whisperResult.segments.length > 0) {
+    lines.push('## Full Transcript', '')
+    for (const seg of whisperResult.segments) {
+      const time = formatTime(seg.start)
+      lines.push(`*(${time})* ${seg.text.trim()}`, '')
+    }
   }
 
   return lines.filter(l => l !== undefined).join('\n')

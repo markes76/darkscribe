@@ -109,6 +109,17 @@ function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], s
     }
   }
 
+  // Full transcript embedded in summary note
+  const finalSegments = segments.filter(s => s.isFinal && s.text.trim())
+  if (finalSegments.length > 0) {
+    lines.push('## Full Transcript', '')
+    for (const seg of finalSegments) {
+      const time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      const speaker = seg.speakerName ?? (seg.speaker === 'mic' ? 'You' : 'Them')
+      lines.push(`*(${time})* **${speaker}:** ${seg.text}`, '')
+    }
+  }
+
   return lines.filter(l => l !== undefined).join('\n')
 }
 
@@ -117,6 +128,8 @@ function buildTranscriptMarkdown(segments: TranscriptSegment[], sum: CallSummary
     ? participants.split(',').map(p => p.trim()).filter(Boolean)
     : filterParticipants(sum.participants)
 
+  const recordingStatus = audioFile ? 'available' : 'none'
+
   const lines: string[] = [
     '---',
     'tags: [call, transcript]',
@@ -124,7 +137,7 @@ function buildTranscriptMarkdown(segments: TranscriptSegment[], sum: CallSummary
     sessionName ? `title: "${sessionName}"` : '',
     participantList.length ? `participants: [${participantList.map(p => `"${p}"`).join(', ')}]` : 'participants: []',
     `duration: "${sum.durationMinutes}min"`,
-    audioFile ? `recording_path: "${audioFile}"` : '',
+    `recording_status: "${recordingStatus}"`,
     '---',
     '',
     '## Transcript',
@@ -133,7 +146,8 @@ function buildTranscriptMarkdown(segments: TranscriptSegment[], sum: CallSummary
 
   for (const seg of segments.filter(s => s.isFinal && s.text.trim())) {
     const time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    lines.push(`*(${time})* ${seg.text}`, '')
+    const speaker = seg.speakerName ?? (seg.speaker === 'mic' ? 'You' : 'Them')
+    lines.push(`*(${time})* **${speaker}:** ${seg.text}`, '')
   }
 
   return lines.filter(l => l !== undefined).join('\n')
