@@ -186,9 +186,13 @@ export default function App(): React.ReactElement {
               // Load session data from disk and open in review mode
               const transcript = await window.darkscribe.session.loadTranscript(session.id) as any[] | null
               const searches = await window.darkscribe.session.loadWebSearches(session.id) as any[] | null
+              // Load audio file path from session call record
+              const sess = await window.darkscribe.session.get(session.id) as any
+              const lastCall = sess?.calls?.[sess.calls.length - 1]
+              const audioPath = lastCall?.audioFile || null
               setCompletedSegments(transcript ?? [])
               setCompletedWebSearches(searches ?? [])
-              setCompletedAudioFile(null)
+              setCompletedAudioFile(audioPath)
               setActiveSession({ id: session.id, name: session.name })
               setState('review')
             }}
