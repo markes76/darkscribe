@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import type { TranscriptSegment } from '../services/openai-realtime'
 import { generateSummary, CallSummary } from '../services/summarizer'
 import ShareableSummaryModal from './ShareableSummaryModal'
+import AudioPlayer from './AudioPlayer'
 import type { WebSearchResult } from './SearchPanel/VaultSearchPanel'
 
 function sanitizeName(name: string): string {
@@ -22,12 +23,14 @@ function filterParticipants(participants: string[]): string[] {
   return participants.filter(p => p !== 'You' && p !== 'Them' && p !== 'Speaker 1' && p !== 'Speaker 2')
 }
 
-function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], sessionName?: string, participants?: string, audioFile?: string | null, webSearches?: WebSearchResult[]): string {
+function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], sessionName?: string, participants?: string, audioFile?: string | null, webSearches?: WebSearchResult[], audioDeleted?: boolean): string {
   const realParticipants = filterParticipants(sum.participants)
-  // If user provided participant names, use those
   const participantList = participants
     ? participants.split(',').map(p => p.trim()).filter(Boolean)
     : realParticipants
+
+  const recordingStatus = audioDeleted ? 'deleted' : audioFile ? 'available' : 'none'
+  const durationStr = `${sum.durationMinutes}min`
 
   const lines: string[] = [
     '---',
@@ -35,8 +38,9 @@ function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], s
     `date: "${sum.dateTime.split('T')[0]}"`,
     sessionName ? `title: "${sessionName}"` : '',
     participantList.length ? `participants: [${participantList.map(p => `"${p}"`).join(', ')}]` : 'participants: []',
-    `duration: "${sum.durationMinutes}min"`,
-    audioFile ? `recording_path: "${audioFile}"` : '',
+    `duration: "${durationStr}"`,
+    `recording_status: "${recordingStatus}"`,
+    `recording_duration: "${durationStr}"`,
     '---',
     '',
     '## Overview',
@@ -156,6 +160,62 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
   const [savingToVault, setSavingToVault] = useState(false)
   const [summaryMarkdown, setSummaryMarkdown] = useState('')
   const [showShareable, setShowShareable] = useState(false)
+  const [audioDeleted, setAudioDeleted] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [audioFileSize, setAudioFileSize] = useState<string | null>(null)
+  const [processingStatus, setProcessingStatus] = useState<string>('idle')
+  const [processingMessage, setProcessingMessage] = useState('')
+  const [showFinalTranscript, setShowFinalTranscript] = useState(false)
+  const [finalTranscript, setFinalTranscript] = useState<unknown[] | null>(null)
+  const [voiceInsights, setVoiceInsights] = useState<Record<string, unknown> | null>(null)
+
+  // Listen for background processing events
+  useEffect(() => {
+    const removeProgress = window.darkscribe.processing.onProgress((data) => {
+      if (data.sessionId === sessionId) {
+        setProcessingMessage(data.message)
+      }
+    })
+    const removeComplete = window.darkscribe.processing.onComplete(async (data) => {
+      if (data.sessionId === sessionId) {
+        setProcessingStatus('completed')
+        setProcessingMessage('Analysis complete — improved transcript ready')
+        // Load the final transcript and summary
+        const ft = await window.darkscribe.processing.loadFinalTranscript(sessionId)
+        if (ft) setFinalTranscript(ft)
+        const fs = await window.darkscribe.processing.loadFinalSummary(sessionId) as CallSummary | null
+        if (fs) {
+          setSummary(fs)
+          const md = buildSummaryMarkdown(fs, segments, sessionName, participants, audioFile, webSearches)
+          setSummaryMarkdown(md)
+        }
+        const gi = await window.darkscribe.processing.loadGeminiInsights(sessionId) as Record<string, unknown> | null
+        if (gi) setVoiceInsights(gi)
+      }
+    })
+    const removeFailed = window.darkscribe.processing.onFailed((data) => {
+      if (data.sessionId === sessionId) {
+        setProcessingStatus('partial')
+        setProcessingMessage(`Background analysis failed: ${data.error}`)
+      }
+    })
+
+    // Check if final data already exists (e.g., returning to a completed session)
+    ;(async () => {
+      const status = await window.darkscribe.processing.status(sessionId)
+      if (status.status === 'completed') {
+        setProcessingStatus('completed')
+        const ft = await window.darkscribe.processing.loadFinalTranscript(sessionId)
+        if (ft) { setFinalTranscript(ft); setShowFinalTranscript(true) }
+        const gi = await window.darkscribe.processing.loadGeminiInsights(sessionId) as Record<string, unknown> | null
+        if (gi) setVoiceInsights(gi)
+      } else if (status.status === 'partial') {
+        setProcessingStatus('partial')
+      }
+    })()
+
+    return () => { removeProgress(); removeComplete(); removeFailed() }
+  }, [sessionId])
 
   useEffect(() => {
     ;(async () => {
@@ -231,6 +291,13 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
           status: 'summarized'
         })
         setSaved(true)
+
+        // Start background processing for higher-quality Whisper transcript + summary
+        if (audioFile) {
+          setProcessingStatus('processing')
+          setProcessingMessage('Starting background analysis...')
+          window.darkscribe.processing.start(sessionId, audioFile, sessionName, participants).catch(() => {})
+        }
 
         // Auto-save to vault if enabled
         if (config.auto_save_to_vault) {
@@ -464,6 +531,113 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
           </div>
         )}
 
+        {/* Processing Status */}
+        {processingStatus === 'processing' && (
+          <div style={{
+            padding: 'var(--sp-3) var(--sp-4)', background: 'var(--accent-subtle)',
+            border: '1px solid rgba(212,175,55,0.2)', borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--sp-4)', display: 'flex', alignItems: 'center', gap: 'var(--sp-3)'
+          }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)',
+              animation: 'breathe 2s infinite', flexShrink: 0
+            }} />
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', fontWeight: 500 }}>
+              {processingMessage || 'Analyzing recording for improved transcript...'}
+            </span>
+          </div>
+        )}
+        {processingStatus === 'completed' && (
+          <div style={{
+            padding: 'var(--sp-2) var(--sp-4)', background: 'var(--positive-subtle)',
+            border: '1px solid rgba(92,181,131,0.2)', borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--sp-4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+          }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--positive)', fontWeight: 600 }}>
+              Improved transcript and summary available
+            </span>
+          </div>
+        )}
+        {processingStatus === 'partial' && (
+          <div style={{
+            padding: 'var(--sp-2) var(--sp-4)', background: 'var(--warning-subtle)',
+            border: '1px solid rgba(212,175,55,0.2)', borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--sp-4)', fontSize: 'var(--text-xs)', color: 'var(--warning)', fontWeight: 500
+          }}>
+            {processingMessage || 'Background analysis incomplete — showing live transcript only'}
+          </div>
+        )}
+
+        {/* Audio Player */}
+        {audioFile && (
+          <div style={{ marginBottom: 'var(--sp-4)' }}>
+            <AudioPlayer filePath={audioDeleted ? null : audioFile} deleted={audioDeleted} />
+            {!audioDeleted && !showDeleteConfirm && (
+              <button
+                onClick={async () => {
+                  const stat = await window.darkscribe.file.stat(audioFile)
+                  if (stat.exists && stat.size) {
+                    setAudioFileSize(`${(stat.size / 1048576).toFixed(1)} MB`)
+                  }
+                  setShowDeleteConfirm(true)
+                }}
+                style={{
+                  marginTop: 'var(--sp-2)', padding: '4px 12px',
+                  background: 'none', border: '1px solid var(--border-1)',
+                  borderRadius: 'var(--radius-full)', fontSize: 10,
+                  color: 'var(--ink-4)', cursor: 'pointer', fontWeight: 500
+                }}
+              >
+                Delete Recording
+              </button>
+            )}
+            {showDeleteConfirm && (
+              <div style={{
+                marginTop: 'var(--sp-2)', padding: 'var(--sp-3)',
+                background: 'var(--negative-subtle)', border: '1px solid var(--negative)',
+                borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)'
+              }}>
+                <div style={{ color: 'var(--ink-1)', marginBottom: 'var(--sp-2)' }}>
+                  Delete the audio recording? The transcript and summary will be kept.
+                  {audioFileSize && <span style={{ color: 'var(--ink-3)' }}> This frees up {audioFileSize} of disk space.</span>}
+                  <strong> This cannot be undone.</strong>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+                  <button
+                    onClick={async () => {
+                      await window.darkscribe.recording.delete(audioFile)
+                      await window.darkscribe.session.saveMetadata(sessionId, {
+                        recording_deleted: true,
+                        recording_deleted_at: new Date().toISOString()
+                      })
+                      setAudioDeleted(true)
+                      setShowDeleteConfirm(false)
+                    }}
+                    style={{
+                      padding: '4px 14px', background: 'var(--negative)',
+                      color: 'white', border: 'none', borderRadius: 'var(--radius-md)',
+                      fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer'
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    style={{
+                      padding: '4px 14px', background: 'var(--surface-3)',
+                      color: 'var(--ink-3)', border: '1px solid var(--border-1)',
+                      borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Overview */}
         {summary?.overview && (
           <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-raised)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
@@ -614,21 +788,70 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
           </div>
         )}
 
+        {/* Voice Insights (Gemini) */}
+        {voiceInsights && (
+          <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--sp-4)' }}>
+            <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--purple)', marginBottom: 'var(--sp-2)' }}>Voice Insights</h3>
+            {(voiceInsights as any).overallTone && (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.6, marginBottom: 4 }}>
+                <strong>Tone:</strong> {(voiceInsights as any).overallTone}
+              </p>
+            )}
+            {(voiceInsights as any).energyLevel && (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.6, marginBottom: 4 }}>
+                <strong>Energy:</strong> {(voiceInsights as any).energyLevel}
+              </p>
+            )}
+            {(voiceInsights as any).speakerDynamics && (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-2)', lineHeight: 1.6 }}>
+                <strong>Dynamics:</strong> {(voiceInsights as any).speakerDynamics}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Transcript Toggle */}
         <details style={{ marginTop: 'var(--sp-4)' }}>
-          <summary style={{ cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--ink-2)', padding: 'var(--sp-2) 0' }}>
-            View Full Transcript ({segments.filter(s => s.isFinal).length} segments)
+          <summary style={{ cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--ink-2)', padding: 'var(--sp-2) 0', display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
+            <span>View Full Transcript ({segments.filter(s => s.isFinal).length} segments)</span>
+            {finalTranscript && (
+              <button
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowFinalTranscript(!showFinalTranscript) }}
+                style={{
+                  padding: '2px 8px', background: showFinalTranscript ? 'var(--positive-subtle)' : 'var(--surface-3)',
+                  border: `1px solid ${showFinalTranscript ? 'rgba(92,181,131,0.2)' : 'var(--border-1)'}`,
+                  borderRadius: 'var(--radius-full)', fontSize: 9, fontWeight: 700,
+                  color: showFinalTranscript ? 'var(--positive)' : 'var(--ink-4)',
+                  cursor: 'pointer', letterSpacing: '0.04em'
+                }}
+              >
+                {showFinalTranscript ? 'FINAL' : 'LIVE'}
+              </button>
+            )}
           </summary>
           <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)', marginTop: 'var(--sp-2)', maxHeight: 400, overflow: 'auto' }}>
-            {segments.filter(s => s.isFinal && s.text.trim()).map(seg => {
-              const time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-              return (
-                <div key={seg.id} style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
-                  <span style={{ color: 'var(--ink-4)', fontSize: 'var(--text-xs)', marginRight: 8 }}>{time}</span>
+            {showFinalTranscript && finalTranscript ? (
+              (finalTranscript as any[]).map((seg: any, i: number) => (
+                <div key={seg.id || i} style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
+                  {seg.startSeconds != null && (
+                    <span style={{ color: 'var(--ink-4)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', marginRight: 8 }}>
+                      {Math.floor(seg.startSeconds / 60)}:{String(Math.floor(seg.startSeconds % 60)).padStart(2, '0')}
+                    </span>
+                  )}
                   <span style={{ color: 'var(--ink-1)' }}>{seg.text}</span>
                 </div>
-              )
-            })}
+              ))
+            ) : (
+              segments.filter(s => s.isFinal && s.text.trim()).map(seg => {
+                const time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                return (
+                  <div key={seg.id} style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
+                    <span style={{ color: 'var(--ink-4)', fontSize: 'var(--text-xs)', marginRight: 8 }}>{time}</span>
+                    <span style={{ color: 'var(--ink-1)' }}>{seg.text}</span>
+                  </div>
+                )
+              })
+            )}
           </div>
         </details>
       </div>

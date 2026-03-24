@@ -62,6 +62,16 @@ export default function Transcript({ segments, isCapturing }: Props): React.Reac
             }}>
               {new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
+            {seg.detectedLanguage && seg.detectedLanguage !== 'unknown' && (
+              <span style={{
+                fontFamily: 'var(--font-mono)', fontSize: 9, fontWeight: 700,
+                color: 'var(--ink-4)', background: 'var(--surface-4)',
+                padding: '1px 4px', borderRadius: 'var(--radius-full)',
+                textTransform: 'uppercase', letterSpacing: '0.06em'
+              }}>
+                {seg.detectedLanguage === 'mixed' ? 'MIX' : seg.detectedLanguage}
+              </span>
+            )}
           </div>
           <div style={{
             fontSize: 'var(--text-sm)', color: seg.isFinal ? 'var(--ink-1)' : 'var(--ink-3)',

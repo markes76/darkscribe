@@ -1,6 +1,70 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { RealtimeTranscriptionService, TranscriptSegment } from '../services/openai-realtime'
 
+// ─── Post-processing filter ────────────────────────────────────────────
+// Filters out hallucinated, duplicate, and wrong-language segments
+
+// Detect script of text to identify language
+function detectScript(text: string): 'hebrew' | 'latin' | 'cjk' | 'arabic' | 'cyrillic' | 'mixed' | 'unknown' {
+  const clean = text.replace(/[\s\d\p{P}\p{S}]/gu, '')
+  if (clean.length === 0) return 'unknown'
+  let hebrew = 0, latin = 0, cjk = 0, arabic = 0, cyrillic = 0
+  for (const ch of clean) {
+    const cp = ch.codePointAt(0)!
+    if (cp >= 0x0590 && cp <= 0x05FF) hebrew++
+    else if ((cp >= 0x0041 && cp <= 0x007A) || (cp >= 0x00C0 && cp <= 0x024F)) latin++
+    else if (cp >= 0x4E00 && cp <= 0x9FFF) cjk++
+    else if (cp >= 0x0600 && cp <= 0x06FF) arabic++
+    else if (cp >= 0x0400 && cp <= 0x04FF) cyrillic++
+  }
+  const total = hebrew + latin + cjk + arabic + cyrillic
+  if (total === 0) return 'unknown'
+  if (hebrew / total > 0.6) return 'hebrew'
+  if (latin / total > 0.6) return 'latin'
+  if (cjk / total > 0.6) return 'cjk'
+  if (arabic / total > 0.6) return 'arabic'
+  if (cyrillic / total > 0.6) return 'cyrillic'
+  return 'mixed'
+}
+
+// Map ISO language codes to expected scripts
+const LANG_SCRIPTS: Record<string, string[]> = {
+  he: ['hebrew'], en: ['latin'], es: ['latin'], fr: ['latin'], de: ['latin'],
+  pt: ['latin'], it: ['latin'], nl: ['latin'], ru: ['cyrillic'], uk: ['cyrillic'],
+  ar: ['arabic'], zh: ['cjk'], ja: ['cjk'], ko: ['cjk']
+}
+
+function detectLanguageCode(text: string): string {
+  const script = detectScript(text)
+  if (script === 'hebrew') return 'he'
+  if (script === 'latin') return 'en' // Default latin to English
+  if (script === 'arabic') return 'ar'
+  if (script === 'cyrillic') return 'ru'
+  if (script === 'cjk') return 'zh'
+  if (script === 'mixed') return 'mixed'
+  return 'unknown'
+}
+
+function isSegmentAllowedByLanguage(text: string, preferredLanguages: string[]): boolean {
+  if (preferredLanguages.length === 0) return true
+  const script = detectScript(text)
+  if (script === 'unknown' || script === 'mixed') return true
+  const allowedScripts = new Set(preferredLanguages.flatMap(l => LANG_SCRIPTS[l] ?? []))
+  if (allowedScripts.size === 0) return true
+  return allowedScripts.has(script)
+}
+
+function charOverlap(a: string, b: string): number {
+  const shorter = a.length < b.length ? a : b
+  const longer = a.length >= b.length ? a : b
+  if (shorter.length === 0) return 0
+  let matches = 0
+  for (let i = 0; i < shorter.length; i++) {
+    if (shorter[i] === longer[i]) matches++
+  }
+  return matches / shorter.length
+}
+
 export type SessionStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'disconnected'
 
 export interface Speaker {
@@ -51,18 +115,46 @@ export function useRealtimeTranscription(): TranscriptionState & TranscriptionAc
   const micProcessorRef = useRef<ScriptProcessorNode | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const preferredLangsRef = useRef<string[]>([])
+  const lastFinalTextRef = useRef<string>('')
+
   const handleTranscriptSegment = useCallback((seg: TranscriptSegment) => {
+    const text = seg.text.trim()
+
+    // Add detected language to segment
+    seg.detectedLanguage = detectLanguageCode(text)
+
+    // Post-processing filters (only apply to final segments)
+    if (seg.isFinal) {
+      // Filter 1: Minimum length — discard segments under 2 chars
+      if (text.length < 2) {
+        console.log(`[Filter] Discarded <2 chars: "${text}"`)
+        return
+      }
+
+      // Filter 2: Language check — discard if entirely in a non-preferred script
+      if (!isSegmentAllowedByLanguage(text, preferredLangsRef.current)) {
+        console.log(`[Filter] Discarded wrong language: "${text.substring(0, 50)}..." (detected: ${seg.detectedLanguage}, preferred: ${preferredLangsRef.current.join(',')})`)
+        return
+      }
+
+      // Filter 3: Dedup — discard if >90% character overlap with previous final segment
+      if (lastFinalTextRef.current && charOverlap(text, lastFinalTextRef.current) > 0.9) {
+        console.log(`[Filter] Discarded duplicate: "${text.substring(0, 50)}..."`)
+        return
+      }
+
+      lastFinalTextRef.current = text
+    }
+
     setSegments(prev => {
       const idx = prev.findIndex(s => s.id === seg.id)
       if (idx !== -1) {
-        // Update existing segment in place
         const next = [...prev]
         next[idx] = seg
         return next
       }
-      // Insert new segment in chronological order by timestamp
       const next = [...prev, seg]
-      // Only sort if the new segment is out of order (optimization)
       if (prev.length > 0 && seg.timestamp < prev[prev.length - 1].timestamp) {
         next.sort((a, b) => a.timestamp - b.timestamp)
       }
@@ -128,6 +220,8 @@ export function useRealtimeTranscription(): TranscriptionState & TranscriptionAc
       if (config.transcription_mode === 'preferred' && config.preferred_languages?.length) {
         languages = config.preferred_languages as string[]
       }
+      // Store for post-processing filter
+      preferredLangsRef.current = languages
 
       // Load vocabulary from Notetaker Skill file
       const prefix = (config.vault_subfolder as string) || ''

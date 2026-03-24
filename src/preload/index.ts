@@ -106,6 +106,52 @@ const api = {
     delete: (filePath: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke('recording:delete', filePath)
   },
+  file: {
+    readBinary: (filePath: string): Promise<{ data?: ArrayBuffer; error?: string }> =>
+      ipcRenderer.invoke('file:read-binary', filePath),
+    stat: (filePath: string): Promise<{ exists: boolean; size?: number; mtimeMs?: number }> =>
+      ipcRenderer.invoke('file:stat', filePath)
+  },
+  storage: {
+    getUsage: (): Promise<{ totalBytes: number; count: number; recordings: Array<{ sessionId: string; filePath: string; size: number; mtimeMs: number }> }> =>
+      ipcRenderer.invoke('storage:get-usage'),
+    deleteOlderThan: (days: number): Promise<{ deleted: number }> =>
+      ipcRenderer.invoke('storage:delete-older-than', days),
+    deleteAll: (): Promise<{ deleted: number }> =>
+      ipcRenderer.invoke('storage:delete-all')
+  },
+  processing: {
+    start: (sessionId: string, audioFilePath: string, sessionName?: string, participants?: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('processing:start', sessionId, audioFilePath, sessionName, participants),
+    status: (sessionId: string): Promise<{ status: string }> =>
+      ipcRenderer.invoke('processing:status', sessionId),
+    loadFinalTranscript: (sessionId: string): Promise<unknown[] | null> =>
+      ipcRenderer.invoke('processing:load-final-transcript', sessionId),
+    loadFinalSummary: (sessionId: string): Promise<unknown | null> =>
+      ipcRenderer.invoke('processing:load-final-summary', sessionId),
+    loadGeminiInsights: (sessionId: string): Promise<unknown | null> =>
+      ipcRenderer.invoke('processing:load-gemini-insights', sessionId),
+    onStatusUpdate: (cb: (data: { sessionId: string; status: string; error?: string }) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, data: { sessionId: string; status: string; error?: string }) => cb(data)
+      ipcRenderer.on('processing:status-update', listener)
+      return () => ipcRenderer.removeListener('processing:status-update', listener)
+    },
+    onProgress: (cb: (data: { sessionId: string; message: string; pct: number }) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, data: { sessionId: string; message: string; pct: number }) => cb(data)
+      ipcRenderer.on('processing:progress', listener)
+      return () => ipcRenderer.removeListener('processing:progress', listener)
+    },
+    onComplete: (cb: (data: { sessionId: string; sessionName?: string }) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, data: { sessionId: string; sessionName?: string }) => cb(data)
+      ipcRenderer.on('processing:complete', listener)
+      return () => ipcRenderer.removeListener('processing:complete', listener)
+    },
+    onFailed: (cb: (data: { sessionId: string; error: string }) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, data: { sessionId: string; error: string }) => cb(data)
+      ipcRenderer.on('processing:failed', listener)
+      return () => ipcRenderer.removeListener('processing:failed', listener)
+    }
+  },
   web: {
     search: (query: string): Promise<{ results: Array<{ title: string; content: string; url: string; score: number }>; answer?: string; error?: string; source?: string }> =>
       ipcRenderer.invoke('web:search', query)

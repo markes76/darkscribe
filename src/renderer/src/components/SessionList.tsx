@@ -18,6 +18,10 @@ interface Session {
 
 interface SessionMeta {
   status?: string
+  recording_deleted?: boolean
+  audioFile?: string
+  audioSize?: number
+  processing_status?: string
 }
 
 interface Props {
@@ -58,7 +62,21 @@ export default function SessionList({ onNewCall, onNewVoiceNote, onSelectSession
       setSessions(sessions)
       const metas: Record<string, SessionMeta | null> = {}
       for (const s of sessions) {
-        try { metas[s.id] = await window.darkscribe.session.loadMetadata(s.id) as SessionMeta | null } catch { metas[s.id] = null }
+        try {
+          const meta = await window.darkscribe.session.loadMetadata(s.id) as SessionMeta | null
+          // Check if audio file exists and get size
+          if (meta && !meta.recording_deleted) {
+            const lastCall = s.calls[s.calls.length - 1]
+            if (lastCall?.audioFile) {
+              const stat = await window.darkscribe.file.stat(lastCall.audioFile as string)
+              if (stat.exists && stat.size) {
+                meta.audioFile = lastCall.audioFile as string
+                meta.audioSize = stat.size
+              }
+            }
+          }
+          metas[s.id] = meta
+        } catch { metas[s.id] = null }
       }
       setSessionMetas(metas)
     })
@@ -203,6 +221,45 @@ export default function SessionList({ onNewCall, onNewVoiceNote, onSelectSession
                           {lastCall.durationMinutes}m
                         </span>
                       ) : null}
+                      {/* Audio size badge */}
+                      {meta?.audioSize && (
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>
+                          {(meta.audioSize / 1048576).toFixed(1)} MB
+                        </span>
+                      )}
+                      {/* Audio deleted indicator */}
+                      {meta?.recording_deleted && (
+                        <span style={{ fontSize: 9, color: 'var(--ink-4)', fontStyle: 'italic' }}>
+                          Audio deleted
+                        </span>
+                      )}
+                      {/* Processing status badges */}
+                      {meta?.processing_status === 'processing' && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, color: 'var(--warning)',
+                          background: 'var(--warning-subtle)',
+                          padding: '1px 8px', borderRadius: 'var(--radius-full)',
+                          animation: 'breathe 2s infinite'
+                        }}>
+                          Analyzing...
+                        </span>
+                      )}
+                      {meta?.processing_status === 'completed' && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, color: 'var(--positive)',
+                          padding: '1px 4px'
+                        }}>
+                          ✓
+                        </span>
+                      )}
+                      {meta?.processing_status === 'partial' && (
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, color: 'var(--warning)',
+                          padding: '1px 4px'
+                        }}>
+                          ⚠
+                        </span>
+                      )}
                       {lastCall?.tags?.map((tag, i) => (
                         <span key={i} style={{
                           fontSize: 9, fontWeight: 600, color: 'var(--accent)',

@@ -8,6 +8,7 @@ import { setupTavilyIpc } from './tavily-search'
 import { setupRecordingIpc, purgeOldRecordings } from './recording-writer'
 import { setupObsidianIpc, testConnection } from './obsidian-api'
 import { setupSkillLearnerIpc, checkForLearnings } from './skill-learner'
+import { setupBackgroundProcessorIpc } from './background-processor'
 import { keychainGet } from './keychain'
 
 // macOS version check: ScreenCaptureKit requires macOS 13.0 (Darwin 22.0)
@@ -85,6 +86,7 @@ app.whenReady().then(() => {
   setupRecordingIpc()
   setupObsidianIpc()
   setupSkillLearnerIpc()
+  setupBackgroundProcessorIpc()
   purgeOldRecordings()
 
   // Test Obsidian connection on startup, then check for learnings

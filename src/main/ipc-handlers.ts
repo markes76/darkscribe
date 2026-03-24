@@ -133,4 +133,77 @@ export function setupIpcHandlers(): void {
     // Couldn't find .obsidian — return the full path as-is
     return { absolutePath: selected, relativePath: '', vaultRoot: '' }
   })
+
+  // File operations for audio player
+  ipcMain.handle('file:read-binary', async (_e, filePath: string) => {
+    try {
+      if (!fs.existsSync(filePath)) return { error: 'File not found' }
+      const buffer = fs.readFileSync(filePath)
+      return { data: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) }
+    } catch (e) {
+      return { error: (e as Error).message }
+    }
+  })
+
+  ipcMain.handle('file:stat', async (_e, filePath: string) => {
+    try {
+      if (!fs.existsSync(filePath)) return { exists: false }
+      const stat = fs.statSync(filePath)
+      return { exists: true, size: stat.size, mtimeMs: stat.mtimeMs }
+    } catch {
+      return { exists: false }
+    }
+  })
+
+  // Storage management — get total recording disk usage
+  ipcMain.handle('storage:get-usage', async () => {
+    const sessionsDir = path.join(app.getPath('userData'), 'sessions')
+    if (!fs.existsSync(sessionsDir)) return { totalBytes: 0, count: 0, recordings: [] }
+    const recordings: Array<{ sessionId: string; filePath: string; size: number; mtimeMs: number }> = []
+    let totalBytes = 0
+    for (const entry of fs.readdirSync(sessionsDir)) {
+      const wavPath = path.join(sessionsDir, entry, 'recording.wav')
+      if (!fs.existsSync(wavPath)) continue
+      try {
+        const stat = fs.statSync(wavPath)
+        recordings.push({ sessionId: entry, filePath: wavPath, size: stat.size, mtimeMs: stat.mtimeMs })
+        totalBytes += stat.size
+      } catch {}
+    }
+    recordings.sort((a, b) => b.size - a.size)
+    return { totalBytes, count: recordings.length, recordings }
+  })
+
+  // Delete recordings older than N days
+  ipcMain.handle('storage:delete-older-than', async (_e, days: number) => {
+    const sessionsDir = path.join(app.getPath('userData'), 'sessions')
+    if (!fs.existsSync(sessionsDir)) return { deleted: 0 }
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+    let deleted = 0
+    for (const entry of fs.readdirSync(sessionsDir)) {
+      const wavPath = path.join(sessionsDir, entry, 'recording.wav')
+      if (!fs.existsSync(wavPath)) continue
+      try {
+        const stat = fs.statSync(wavPath)
+        if (stat.mtimeMs < cutoff) {
+          fs.unlinkSync(wavPath)
+          deleted++
+        }
+      } catch {}
+    }
+    return { deleted }
+  })
+
+  // Delete all recordings
+  ipcMain.handle('storage:delete-all', async () => {
+    const sessionsDir = path.join(app.getPath('userData'), 'sessions')
+    if (!fs.existsSync(sessionsDir)) return { deleted: 0 }
+    let deleted = 0
+    for (const entry of fs.readdirSync(sessionsDir)) {
+      const wavPath = path.join(sessionsDir, entry, 'recording.wav')
+      if (!fs.existsSync(wavPath)) continue
+      try { fs.unlinkSync(wavPath); deleted++ } catch {}
+    }
+    return { deleted }
+  })
 }

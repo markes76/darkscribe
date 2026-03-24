@@ -33,6 +33,19 @@ export default function App(): React.ReactElement {
   const [completedAudioFile, setCompletedAudioFile] = useState<string | null>(null)
   const [completedWebSearches, setCompletedWebSearches] = useState<WebSearchResult[]>([])
   const [voiceNote, setVoiceNote] = useState<VoiceNoteState>({ topic: '', category: 'Ideas' })
+  const [toast, setToast] = useState<{ message: string; sessionId?: string } | null>(null)
+
+  // Listen for background processing completion (toast when not on summary screen)
+  useEffect(() => {
+    const removeComplete = window.darkscribe.processing.onComplete((data) => {
+      // Only show toast if user is NOT currently viewing this session's summary
+      if (state !== 'summary' || activeSession?.id !== data.sessionId) {
+        setToast({ message: `Summary ready: ${data.sessionName || 'Recording'}`, sessionId: data.sessionId })
+        setTimeout(() => setToast(null), 6000)
+      }
+    })
+    return () => removeComplete()
+  }, [state, activeSession?.id])
 
   useEffect(() => {
     window.darkscribe.config.read().then((config) => {
@@ -181,6 +194,27 @@ export default function App(): React.ReactElement {
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {renderContent()}
       </div>
+
+      {/* Toast notification */}
+      {toast && (
+        <div
+          onClick={() => setToast(null)}
+          style={{
+            position: 'fixed', bottom: 24, right: 24,
+            padding: 'var(--sp-3) var(--sp-5)', background: 'var(--surface-glass)',
+            backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid var(--border-1)', borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-lg)', cursor: 'pointer',
+            animation: 'fadeInUp 0.3s ease', zIndex: 9999,
+            display: 'flex', alignItems: 'center', gap: 'var(--sp-2)'
+          }}
+        >
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--positive)', flexShrink: 0 }} />
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', fontWeight: 500 }}>
+            {toast.message}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

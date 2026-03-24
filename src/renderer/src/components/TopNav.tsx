@@ -20,9 +20,8 @@ export default function TopNav({ activeTab, isCapturing, onNavigate }: Props): R
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', minWidth: 160, WebkitAppRegion: 'no-drag' as any }}>
         <span style={{
-          fontFamily: 'var(--font-display)', fontSize: 'var(--text-base)', fontWeight: 800,
-          color: 'var(--accent)', letterSpacing: '-0.03em', textTransform: 'uppercase',
-          fontSize: '0.75rem', letterSpacing: '0.08em'
+          fontFamily: 'var(--font-display)', fontSize: '0.75rem', fontWeight: 800,
+          color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase'
         }}>
           Darkscribe
         </span>

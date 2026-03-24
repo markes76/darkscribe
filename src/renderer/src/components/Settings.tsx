@@ -1,8 +1,149 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
+
+function StorageSection({ retentionDays, setRetentionDays }: { retentionDays: number; setRetentionDays: (d: number) => void }) {
+  const [usage, setUsage] = useState<{ totalBytes: number; count: number } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
+
+  const card: React.CSSProperties = {
+    padding: 'var(--sp-4)', background: 'var(--surface-2)',
+    border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)'
+  }
+
+  const loadUsage = useCallback(async () => {
+    const result = await window.darkscribe.storage.getUsage()
+    setUsage(result)
+  }, [])
+
+  useEffect(() => { loadUsage() }, [loadUsage])
+
+  const handleDeleteOlderThan = async (days: number) => {
+    setDeleting(true)
+    await window.darkscribe.storage.deleteOlderThan(days)
+    await loadUsage()
+    setDeleting(false)
+  }
+
+  const handleDeleteAll = async () => {
+    setDeleting(true)
+    await window.darkscribe.storage.deleteAll()
+    setConfirmDeleteAll(false)
+    await loadUsage()
+    setDeleting(false)
+  }
+
+  return (
+    <>
+      <h3 style={{ fontSize: 'var(--text-lg)', color: 'var(--ink-1)', marginBottom: 'var(--sp-4)' }}>Storage</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+        <div style={card}>
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-2)', fontWeight: 600, marginBottom: 'var(--sp-2)' }}>
+            Disk Usage
+          </div>
+          {usage ? (
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', fontFamily: 'var(--font-mono)' }}>
+              {usage.count} recording{usage.count !== 1 ? 's' : ''} using {(usage.totalBytes / 1048576).toFixed(1)} MB
+            </div>
+          ) : (
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-4)' }}>Loading...</div>
+          )}
+        </div>
+
+        <div style={card}>
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-2)', fontWeight: 600, marginBottom: 'var(--sp-2)' }}>
+            Delete Recordings Older Than
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+            {[7, 30, 90].map(days => (
+              <button
+                key={days}
+                onClick={() => handleDeleteOlderThan(days)}
+                disabled={deleting}
+                style={{
+                  padding: '6px 14px', background: 'var(--surface-3)',
+                  border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)',
+                  fontSize: 'var(--text-xs)', color: 'var(--ink-2)', cursor: 'pointer',
+                  fontWeight: 500, opacity: deleting ? 0.5 : 1
+                }}
+              >
+                {days} days
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={card}>
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-2)', fontWeight: 600, marginBottom: 'var(--sp-2)' }}>
+            Auto-Delete Recordings
+          </div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)', marginBottom: 'var(--sp-2)' }}>
+            Automatically delete recordings older than the selected period on app launch.
+          </div>
+          <select
+            value={retentionDays}
+            onChange={async (e) => {
+              const val = parseInt(e.target.value)
+              setRetentionDays(val)
+              await window.darkscribe.config.write({ recordings_retention_days: val })
+            }}
+            style={{
+              padding: '8px 12px', background: 'var(--surface-3)',
+              border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)',
+              fontSize: 'var(--text-sm)', color: 'var(--ink-1)', cursor: 'pointer'
+            }}
+          >
+            <option value={0}>Never</option>
+            <option value={7}>After 7 days</option>
+            <option value={30}>After 30 days</option>
+            <option value={90}>After 90 days</option>
+          </select>
+        </div>
+
+        <div style={card}>
+          {!confirmDeleteAll ? (
+            <button
+              onClick={() => setConfirmDeleteAll(true)}
+              style={{
+                padding: 'var(--sp-2) var(--sp-4)', background: 'var(--negative-subtle)',
+                border: '1px solid var(--negative)', borderRadius: 'var(--radius-md)',
+                fontSize: 'var(--text-sm)', color: 'var(--negative)', cursor: 'pointer',
+                fontWeight: 600, width: '100%', textAlign: 'left'
+              }}
+            >
+              Delete All Recordings
+            </button>
+          ) : (
+            <div>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-1)', marginBottom: 'var(--sp-2)', fontWeight: 600 }}>
+                Are you sure? This will delete all audio recordings. Transcripts and summaries will be kept.
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+                <button onClick={handleDeleteAll} disabled={deleting} style={{
+                  padding: '6px 16px', background: 'var(--negative)', color: 'white',
+                  border: 'none', borderRadius: 'var(--radius-md)',
+                  fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer'
+                }}>
+                  Delete All
+                </button>
+                <button onClick={() => setConfirmDeleteAll(false)} style={{
+                  padding: '6px 16px', background: 'var(--surface-3)', color: 'var(--ink-3)',
+                  border: '1px solid var(--border-1)', borderRadius: 'var(--radius-md)',
+                  fontSize: 'var(--text-xs)', cursor: 'pointer'
+                }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
 
 interface Props { onBack: () => void }
 
-type Section = 'keys' | 'obsidian' | 'language' | 'appearance' | 'advanced'
+type Section = 'keys' | 'obsidian' | 'language' | 'appearance' | 'storage' | 'advanced'
 
 export default function Settings({ onBack }: Props): React.ReactElement {
   const [activeSection, setActiveSection] = useState<Section>('keys')
@@ -14,6 +155,9 @@ export default function Settings({ onBack }: Props): React.ReactElement {
   const [tavilyOk, setTavilyOk] = useState(false)
   const [tavilyEditing, setTavilyEditing] = useState(false)
   const [tavilyNewKey, setTavilyNewKey] = useState('')
+  const [geminiOk, setGeminiOk] = useState(false)
+  const [geminiEditing, setGeminiEditing] = useState(false)
+  const [geminiNewKey, setGeminiNewKey] = useState('')
 
   // Obsidian connection
   const [obsidianConnected, setObsidianConnected] = useState(false)
@@ -29,6 +173,9 @@ export default function Settings({ onBack }: Props): React.ReactElement {
   const [autoSaveToVault, setAutoSaveToVault] = useState(false)
   const [saveIncomplete, setSaveIncomplete] = useState(false)
 
+  // Storage
+  const [retentionDays, setRetentionDays] = useState(30)
+
   // Language
   const [transcriptionMode, setTranscriptionMode] = useState<'auto' | 'preferred'>('auto')
   const [preferredLanguages, setPreferredLanguages] = useState<string[]>([])
@@ -38,6 +185,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
 
   useEffect(() => {
     window.darkscribe.keychain.get('openai-api-key').then(k => { if (k) setOpenaiOk(true) })
+    window.darkscribe.keychain.get('gemini-api-key').then(k => { if (k) setGeminiOk(true) })
     window.darkscribe.tavily.status().then(s => setTavilyOk(s.configured))
     window.darkscribe.vault.status().then(s => setObsidianConnected(s.connected))
     window.darkscribe.config.read().then(c => {
@@ -49,6 +197,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
       setPreferredLanguages((c.preferred_languages as string[]) ?? [])
       setAutoSaveToVault((c.auto_save_to_vault as boolean) ?? false)
       setSaveIncomplete((c.save_incomplete_sessions as boolean) ?? false)
+      setRetentionDays((c.recordings_retention_days as number) ?? 30)
     })
   }, [])
 
@@ -128,6 +277,7 @@ export default function Settings({ onBack }: Props): React.ReactElement {
     { id: 'obsidian', label: 'Obsidian' },
     { id: 'language', label: 'Language' },
     { id: 'appearance', label: 'Appearance' },
+    { id: 'storage', label: 'Storage' },
     { id: 'advanced', label: 'Advanced' }
   ]
 
@@ -185,6 +335,43 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                 ) : (
                   <button onClick={() => setTavilyEditing(true)} style={btnSm}>{tavilyOk ? 'Change' : 'Set Key'}</button>
                 )}
+              </div>
+
+              {/* Gemini */}
+              <div style={card}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--sp-2)' }}>
+                  <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>Gemini (optional)</span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: geminiOk ? 'var(--positive)' : 'var(--ink-4)', fontWeight: 600 }}>{geminiOk ? 'Configured' : 'Not set'}</span>
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)', marginBottom: 'var(--sp-2)' }}>
+                  Enables voice tone and speaker dynamics analysis from audio recordings.
+                </div>
+                {geminiEditing ? (
+                  <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+                    <input value={geminiNewKey} onChange={e => setGeminiNewKey(e.target.value)} placeholder="AIzaSy..." style={inputStyle} />
+                    <button onClick={async () => {
+                      if (!geminiNewKey.trim()) return
+                      await window.darkscribe.keychain.set('gemini-api-key', geminiNewKey.trim())
+                      setGeminiOk(true); setGeminiEditing(false); setGeminiNewKey('')
+                    }} style={{ ...btnSm, background: 'var(--accent)', color: 'var(--accent-ink)', border: 'none' }}>Save</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setGeminiEditing(true)} style={btnSm}>{geminiOk ? 'Change' : 'Set Key'}</button>
+                )}
+              </div>
+
+              {/* Cost Estimates */}
+              <div style={{ ...card, background: 'var(--surface-3)' }}>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'var(--ink-2)', marginBottom: 'var(--sp-2)' }}>
+                  Estimated Costs
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--ink-3)', lineHeight: 1.8 }}>
+                  <div>Per 30-minute call: ~$0.20 (Whisper + GPT-4o)</div>
+                  <div>With Gemini insights: ~$0.25</div>
+                  <div style={{ marginTop: 4, color: 'var(--ink-4)' }}>
+                    Whisper: ~$0.006/min | GPT-4o summary: ~$0.01-0.05
+                  </div>
+                </div>
               </div>
             </>
           )}
@@ -354,6 +541,10 @@ export default function Settings({ onBack }: Props): React.ReactElement {
                 ))}
               </div>
             </>
+          )}
+
+          {activeSection === 'storage' && (
+            <StorageSection retentionDays={retentionDays} setRetentionDays={setRetentionDays} />
           )}
 
           {activeSection === 'advanced' && (

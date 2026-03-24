@@ -15,6 +15,7 @@ export type TranscriptSegment = {
   isFinal: boolean
   timestamp: number
   language?: string
+  detectedLanguage?: string  // Script-detected: 'he', 'en', 'mixed', 'unknown'
 }
 
 export type TranscriptCallback = (segment: TranscriptSegment) => void
@@ -99,14 +100,21 @@ class RealtimeChannel {
 
   private sendSessionConfig(): void {
     const transcriptionConfig: Record<string, unknown> = { model: 'whisper-1' }
-    if (this.languages.length === 1 && this.languages[0] !== 'auto') {
+    // Always send primary language when preferred languages are set (even with multiple)
+    // This constrains Whisper's decoder to the primary language, reducing hallucinations
+    if (this.languages.length > 0 && this.languages[0] !== 'auto') {
       transcriptionConfig.language = this.languages[0]
     }
 
-    // Build transcription instructions for higher quality output
-    const langNote = this.languages.length > 1
-      ? `The speakers may switch between ${this.languages.join(', ')}. Transcribe in the language being spoken. Do not translate.`
-      : ''
+    // Build language enforcement instructions
+    let langNote = ''
+    if (this.languages.length === 1 && this.languages[0] !== 'auto') {
+      const langCode = this.languages[0].toUpperCase()
+      langNote = `\nLanguage: Transcribe ONLY in ${langCode}. If you hear speech in any other language, transcribe it phonetically in ${langCode}. Never output text in any other language or script.`
+    } else if (this.languages.length > 1) {
+      const langCodes = this.languages.map(l => l.toUpperCase()).join(' and ')
+      langNote = `\nLanguage: Transcribe ONLY in ${langCodes}. The speakers may switch between these languages. Transcribe in the language being spoken. Do not translate. If you hear speech in any other language, transcribe it phonetically in one of these languages. Never output text in any other language or script.`
+    }
 
     const channelNote = this.channel === 'sys'
       ? 'This audio is from remote participants in a video/phone call (system audio capture).'
@@ -126,14 +134,20 @@ Transcription rules:
 - Do not censor, paraphrase, or summarize. Do not add commentary.
 - If a word is unclear, transcribe your best interpretation rather than omitting it.
 - Preserve filler words (um, uh, like) only when they carry conversational meaning (hesitation, emphasis). Omit routine fillers.
+
+Anti-hallucination rules (CRITICAL):
+- Do NOT generate text for silence or background noise. If the audio is unclear or contains only ambient sounds, return nothing.
+- Do NOT infer or predict words. Only transcribe what is clearly and audibly spoken.
+- Do NOT repeat the same phrase if it was only said once.
+- Do NOT fabricate words to fill gaps in the audio. Silence is acceptable.
+- If you are uncertain about a word, leave it out rather than guessing.
 ${langNote}${vocabNote}`
 
-    // Different VAD settings per channel:
-    // - Mic: longer silence tolerance (speakers pause to think)
-    // - System: shorter silence tolerance (break up continuous remote speech faster)
+    // VAD settings per channel with higher thresholds to reduce false triggers
+    // Higher threshold = less sensitive = fewer hallucinations during quiet moments
     const vadConfig = this.channel === 'sys'
-      ? { type: 'server_vad' as const, threshold: 0.3, prefix_padding_ms: 300, silence_duration_ms: 400 }
-      : { type: 'server_vad' as const, threshold: 0.45, prefix_padding_ms: 500, silence_duration_ms: 800 }
+      ? { type: 'server_vad' as const, threshold: 0.4, prefix_padding_ms: 300, silence_duration_ms: 500 }
+      : { type: 'server_vad' as const, threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 800 }
 
     this.send({
       type: 'session.update',
