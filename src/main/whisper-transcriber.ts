@@ -4,7 +4,6 @@
 
 import fs from 'fs'
 import { keychainGet } from './keychain'
-import { readConfig } from './config'
 
 const WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions'
 const MAX_FILE_SIZE = 24 * 1024 * 1024 // 24MB safety margin under 25MB limit
@@ -52,7 +51,6 @@ function createWavHeader(pcmBytes: number): Buffer {
 async function transcribeChunk(
   wavBuffer: Buffer,
   apiKey: string,
-  language: string,
   chunkIndex: number,
   timeOffset: number
 ): Promise<WhisperResult> {
@@ -62,9 +60,9 @@ async function transcribeChunk(
   formData.append('model', 'whisper-1')
   formData.append('response_format', 'verbose_json')
   formData.append('timestamp_granularities[]', 'segment')
-  if (language && language !== 'auto') {
-    formData.append('language', language)
-  }
+  // NO language parameter — Whisper auto-detects the actual spoken language.
+  // Forcing a language here caused the Hebrew translation bug where English
+  // meetings were re-transcribed entirely in Hebrew.
 
   const resp = await fetch(WHISPER_URL, {
     method: 'POST',
@@ -95,7 +93,7 @@ async function transcribeChunk(
   return {
     text: data.text,
     segments,
-    language: data.language || language,
+    language: data.language || 'auto',
     duration: data.duration || 0
   }
 }
@@ -107,9 +105,9 @@ export async function transcribeWav(
   const apiKey = await keychainGet('openai-api-key')
   if (!apiKey) throw new Error('OpenAI API key not configured')
 
-  const config = readConfig()
-  const languages = config.preferred_languages ?? []
-  const language = languages[0] || 'auto'
+  // DO NOT read preferred_languages here. Whisper must auto-detect the actual
+  // spoken language from the audio. The user's language preference is only for
+  // the live Realtime API, not for post-call re-transcription.
 
   if (!fs.existsSync(filePath)) throw new Error(`WAV file not found: ${filePath}`)
 
@@ -124,7 +122,7 @@ export async function transcribeWav(
   // If file is small enough, send it directly
   if (fileSize <= MAX_FILE_SIZE) {
     onProgress?.('Transcribing...', 10)
-    const result = await transcribeChunk(fileBuffer, apiKey, language, 0, 0)
+    const result = await transcribeChunk(fileBuffer, apiKey, 0, 0)
     onProgress?.('Transcription complete', 100)
     return result
   }
@@ -142,7 +140,7 @@ export async function transcribeWav(
     const timeOffset = (startByte / BYTES_PER_SAMPLE) / SAMPLE_RATE
 
     chunkPromises.push(
-      transcribeChunk(chunkWav, apiKey, language, i, timeOffset).then(result => {
+      transcribeChunk(chunkWav, apiKey, i, timeOffset).then(result => {
         const pct = Math.round(10 + (80 * (i + 1) / numChunks))
         onProgress?.(`Analyzed ${i + 1} of ${numChunks} segments`, pct)
         return result
@@ -171,7 +169,7 @@ export async function transcribeWav(
   return {
     text: textParts.join(' '),
     segments: allSegments,
-    language: results[0]?.language || language,
+    language: results[0]?.language || 'auto',
     duration: totalDur
   }
 }

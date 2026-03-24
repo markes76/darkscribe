@@ -69,6 +69,8 @@ async function generateSummaryFromWhisper(
 "sentiment": object with: "overallTone", "emotionalArc", "keyMoments" (array of {topic, sentiment, indicator}), "participantDynamics", "engagementLevel", "topicSentiments" (array of {topic, sentiment, detail}), "concerns" (string[]), "positiveSignals" (string[]), "risksDetected" (string[]), "recommendation"
 
 For sentiment: be specific, cite actual language from the transcript.
+
+CRITICAL LANGUAGE RULE: Write your summary in the SAME LANGUAGE the conversation was conducted in. If the conversation was in English, write everything in English. If it was in Hebrew, write in Hebrew. If it was mixed, use the dominant language. Do NOT translate the transcript or the summary into a different language. The output language must match the input language.
 ${participants ? `Known participants: ${participants}` : ''}
 ${skillContent ? `\nFollow these learned preferences:\n${skillContent}` : ''}
 Return ONLY the JSON object. All fields at the top level.`
@@ -141,6 +143,7 @@ async function runGeminiAnalysis(audioFilePath: string): Promise<Record<string, 
 - "speakerDynamics": string — who dominated, how they interacted
 - "emotionalShifts": array of {timestamp_approx: string, description: string}
 - "confidenceIndicators": array of {statement: string, confidence: "high"|"medium"|"low"}
+Write your analysis in the same language the conversation was conducted in. Do not translate.
 Return ONLY valid JSON.`
             }
           ]
@@ -383,8 +386,9 @@ async function processSession(job: ProcessingJob): Promise<void> {
       JSON.stringify(summary, null, 2)
     )
 
-    // Also update the main summary.json with the improved version
-    saveSummary(sessionId, summary)
+    // DO NOT overwrite summary.json — that's the live-generated summary.
+    // The improved version lives in summary_final.json only.
+    // The renderer reads summary_final.json when available.
 
     // Step 3: Optional Gemini analysis
     job.status = 'gemini'
@@ -394,9 +398,12 @@ async function processSession(job: ProcessingJob): Promise<void> {
         path.join(sessDir, 'gemini_insights.json'),
         JSON.stringify(geminiInsights, null, 2)
       )
-      // Merge voice insights into summary
+      // Merge voice insights into the final summary file (not live summary.json)
       const mergedSummary = { ...summary, voiceInsights: geminiInsights }
-      saveSummary(sessionId, mergedSummary)
+      fs.writeFileSync(
+        path.join(sessDir, 'summary_final.json'),
+        JSON.stringify(mergedSummary, null, 2)
+      )
     }
 
     // Step 4: Sync to Obsidian vault if auto-update enabled
