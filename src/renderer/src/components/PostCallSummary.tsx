@@ -23,7 +23,7 @@ function filterParticipants(participants: string[]): string[] {
   return participants.filter(p => p !== 'You' && p !== 'Them' && p !== 'Speaker 1' && p !== 'Speaker 2')
 }
 
-function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], sessionName?: string, participants?: string, audioFile?: string | null, webSearches?: WebSearchResult[], audioDeleted?: boolean): string {
+function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[] | any[], sessionName?: string, participants?: string, audioFile?: string | null, webSearches?: WebSearchResult[], audioDeleted?: boolean, txVersion?: string): string {
   const realParticipants = filterParticipants(sum.participants)
   const participantList = participants
     ? participants.split(',').map(p => p.trim()).filter(Boolean)
@@ -41,6 +41,7 @@ function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], s
     `duration: "${durationStr}"`,
     `recording_status: "${recordingStatus}"`,
     `recording_duration: "${durationStr}"`,
+    txVersion ? `transcript_version: "${txVersion}"` : '',
     '---',
     '',
     '## Overview',
@@ -110,20 +111,28 @@ function buildSummaryMarkdown(sum: CallSummary, segments: TranscriptSegment[], s
   }
 
   // Full transcript embedded in summary note
-  const finalSegments = segments.filter(s => s.isFinal && s.text.trim())
+  const finalSegments = segments.filter((s: any) => (s.isFinal !== false) && s.text?.trim())
   if (finalSegments.length > 0) {
-    lines.push('## Full Transcript', '')
+    const versionLabel = txVersion === 'gemini' ? ' (Gemini Corrected)' : txVersion === 'whisper' ? ' (Whisper)' : ''
+    lines.push(`## Full Transcript${versionLabel}`, '')
     for (const seg of finalSegments) {
-      const time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      const speaker = seg.speakerName ?? (seg.speaker === 'mic' ? 'You' : 'Them')
-      lines.push(`*(${time})* **${speaker}:** ${seg.text}`, '')
+      // Handle both live segments (timestamp) and processed segments (startSeconds)
+      let time: string
+      if ((seg as any).startSeconds != null) {
+        const ss = (seg as any).startSeconds
+        time = `${Math.floor(ss / 60)}:${String(Math.floor(ss % 60)).padStart(2, '0')}`
+      } else {
+        time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      }
+      const speaker = (seg as any).speakerName ?? ((seg as any).speaker === 'mic' ? 'You' : (seg as any).speaker === 'sys' ? 'Them' : (seg as any).speaker !== 'mixed' && (seg as any).speaker ? (seg as any).speaker : '')
+      lines.push(`*(${time})*${speaker ? ` **${speaker}:**` : ''} ${seg.text}`, '')
     }
   }
 
   return lines.filter(l => l !== undefined).join('\n')
 }
 
-function buildTranscriptMarkdown(segments: TranscriptSegment[], sum: CallSummary, sessionName?: string, participants?: string, audioFile?: string | null): string {
+function buildTranscriptMarkdown(txSegments: TranscriptSegment[] | any[], sum: CallSummary, sessionName?: string, participants?: string, audioFile?: string | null, txVersion?: string): string {
   const participantList = participants
     ? participants.split(',').map(p => p.trim()).filter(Boolean)
     : filterParticipants(sum.participants)
@@ -138,16 +147,23 @@ function buildTranscriptMarkdown(segments: TranscriptSegment[], sum: CallSummary
     participantList.length ? `participants: [${participantList.map(p => `"${p}"`).join(', ')}]` : 'participants: []',
     `duration: "${sum.durationMinutes}min"`,
     `recording_status: "${recordingStatus}"`,
+    txVersion ? `transcript_version: "${txVersion}"` : '',
     '---',
     '',
     '## Transcript',
     ''
   ]
 
-  for (const seg of segments.filter(s => s.isFinal && s.text.trim())) {
-    const time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    const speaker = seg.speakerName ?? (seg.speaker === 'mic' ? 'You' : 'Them')
-    lines.push(`*(${time})* **${speaker}:** ${seg.text}`, '')
+  for (const seg of txSegments.filter((s: any) => (s.isFinal !== false) && s.text?.trim())) {
+    let time: string
+    if ((seg as any).startSeconds != null) {
+      const ss = (seg as any).startSeconds
+      time = `${Math.floor(ss / 60)}:${String(Math.floor(ss % 60)).padStart(2, '0')}`
+    } else {
+      time = new Date(seg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    }
+    const speaker = (seg as any).speakerName ?? ((seg as any).speaker === 'mic' ? 'You' : (seg as any).speaker === 'sys' ? 'Them' : (seg as any).speaker !== 'mixed' && (seg as any).speaker ? (seg as any).speaker : '')
+    lines.push(`*(${time})*${speaker ? ` **${speaker}:**` : ''} ${seg.text}`, '')
   }
 
   return lines.filter(l => l !== undefined).join('\n')
@@ -409,8 +425,22 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
       const baseName = buildFilename(summary.dateTime, sessionName)
       const notePath = vp(`Calls/Summaries/${baseName}.md`)
 
-      // Use saveNote (create or overwrite) instead of createNote (fails if exists)
-      const saveResult = await window.darkscribe.vault.saveNote(notePath, summaryMarkdown)
+      // Determine which transcript segments to save based on user's selected version
+      let saveSegments: any[] = segments
+      let saveTxVersion = transcriptVersion
+      if (transcriptVersion === 'gemini' && geminiTranscript) {
+        saveSegments = geminiTranscript as any[]
+      } else if (transcriptVersion === 'whisper' && finalTranscript) {
+        saveSegments = finalTranscript as any[]
+      } else {
+        saveSegments = segments
+        saveTxVersion = 'live'
+      }
+
+      // Build markdown with the selected transcript version
+      const vaultSummaryMd = buildSummaryMarkdown(summary, saveSegments, sessionName, participants, audioFile, webSearches, false, saveTxVersion)
+
+      const saveResult = await window.darkscribe.vault.saveNote(notePath, vaultSummaryMd)
       if (!saveResult.ok) throw new Error(saveResult.error ?? 'Save failed')
 
       // Store vaultNotePath and originalSummary in session
@@ -420,14 +450,14 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
         if (callIdx >= 0) {
           await window.darkscribe.session.updateCall(sessionId, callIdx, {
             vaultNotePath: notePath,
-            originalSummary: summaryMarkdown
+            originalSummary: vaultSummaryMd
           })
         }
       }
 
-      // Also save transcript
+      // Also save transcript note with same version
       const txPath = vp(`Calls/Transcripts/${baseName}.md`)
-      const txContent = buildTranscriptMarkdown(segments, summary, sessionName, participants, audioFile)
+      const txContent = buildTranscriptMarkdown(saveSegments, summary, sessionName, participants, audioFile, saveTxVersion)
       await window.darkscribe.vault.saveNote(txPath, txContent)
 
       // Save individual web search references
@@ -520,10 +550,11 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
                 Open in Obsidian
               </button>
             )}
-            {savedToVault && processingStatus === 'completed' && (
+            {savedToVault && (
               <button
                 onClick={async () => {
-                  // Re-save to vault with the improved version
+                  // Re-save to vault with the currently selected transcript version
+                  setSavedToVault(false)
                   await saveToVault()
                 }}
                 style={{
@@ -532,7 +563,7 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
                   fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 600
                 }}
               >
-                Update Obsidian
+                Update Obsidian ({transcriptVersion === 'gemini' ? 'Gemini' : transcriptVersion === 'whisper' ? 'Whisper' : 'Live'})
               </button>
             )}
             <button onClick={() => setShowShareable(true)} style={{
