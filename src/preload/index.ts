@@ -131,6 +131,10 @@ const api = {
       ipcRenderer.invoke('processing:load-final-summary', sessionId),
     loadGeminiInsights: (sessionId: string): Promise<unknown | null> =>
       ipcRenderer.invoke('processing:load-gemini-insights', sessionId),
+    loadGeminiTranscript: (sessionId: string): Promise<unknown[] | null> =>
+      ipcRenderer.invoke('processing:load-gemini-transcript', sessionId),
+    loadBestTranscript: (sessionId: string): Promise<{ data: unknown[]; version: string } | null> =>
+      ipcRenderer.invoke('processing:load-best-transcript', sessionId),
     onStatusUpdate: (cb: (data: { sessionId: string; status: string; error?: string }) => void): (() => void) => {
       const listener = (_: Electron.IpcRendererEvent, data: { sessionId: string; status: string; error?: string }) => cb(data)
       ipcRenderer.on('processing:status-update', listener)

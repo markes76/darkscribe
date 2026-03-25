@@ -179,8 +179,9 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
   const [audioFileSize, setAudioFileSize] = useState<string | null>(null)
   const [processingStatus, setProcessingStatus] = useState<string>('idle')
   const [processingMessage, setProcessingMessage] = useState('')
-  const [showFinalTranscript, setShowFinalTranscript] = useState(false)
+  const [transcriptVersion, setTranscriptVersion] = useState<'live' | 'whisper' | 'gemini'>('live')
   const [finalTranscript, setFinalTranscript] = useState<unknown[] | null>(null)
+  const [geminiTranscript, setGeminiTranscript] = useState<unknown[] | null>(null)
   const [voiceInsights, setVoiceInsights] = useState<Record<string, unknown> | null>(null)
 
   // Listen for background processing events
@@ -194,9 +195,13 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
       if (data.sessionId === sessionId) {
         setProcessingStatus('completed')
         setProcessingMessage('Analysis complete — improved transcript ready')
-        // Load the final transcript and summary
+        // Load all transcript versions
         const ft = await window.darkscribe.processing.loadFinalTranscript(sessionId)
         if (ft) setFinalTranscript(ft)
+        const gt = await window.darkscribe.processing.loadGeminiTranscript(sessionId) as unknown[] | null
+        if (gt) { setGeminiTranscript(gt); setTranscriptVersion('gemini') }
+        else if (ft) { setTranscriptVersion('whisper') }
+        // Load summary and insights
         const fs = await window.darkscribe.processing.loadFinalSummary(sessionId) as CallSummary | null
         if (fs) {
           setSummary(fs)
@@ -220,7 +225,10 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
       if (status.status === 'completed') {
         setProcessingStatus('completed')
         const ft = await window.darkscribe.processing.loadFinalTranscript(sessionId)
-        if (ft) { setFinalTranscript(ft); setShowFinalTranscript(true) }
+        if (ft) setFinalTranscript(ft)
+        const gt = await window.darkscribe.processing.loadGeminiTranscript(sessionId) as unknown[] | null
+        if (gt) { setGeminiTranscript(gt); setTranscriptVersion('gemini') }
+        else if (ft) { setTranscriptVersion('whisper') }
         const gi = await window.darkscribe.processing.loadGeminiInsights(sessionId) as Record<string, unknown> | null
         if (gi) setVoiceInsights(gi)
       } else if (status.status === 'partial') {
@@ -852,23 +860,73 @@ export default function PostCallSummary({ segments, sessionId, sessionName, part
         <details style={{ marginTop: 'var(--sp-4)' }}>
           <summary style={{ cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--ink-2)', padding: 'var(--sp-2) 0', display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
             <span>View Full Transcript ({segments.filter(s => s.isFinal).length} segments)</span>
-            {finalTranscript && (
+          </summary>
+
+          {/* Version selector */}
+          {(finalTranscript || geminiTranscript) && (
+            <div style={{ display: 'flex', gap: 'var(--sp-1)', marginTop: 'var(--sp-2)', marginBottom: 'var(--sp-2)' }}>
+              {geminiTranscript && (
+                <button
+                  onClick={() => setTranscriptVersion('gemini')}
+                  style={{
+                    padding: '3px 10px',
+                    background: transcriptVersion === 'gemini' ? 'var(--accent)' : 'var(--surface-3)',
+                    border: `1px solid ${transcriptVersion === 'gemini' ? 'var(--accent)' : 'var(--border-1)'}`,
+                    borderRadius: 'var(--radius-full)', fontSize: 9, fontWeight: 700,
+                    color: transcriptVersion === 'gemini' ? 'var(--accent-ink)' : 'var(--ink-4)',
+                    cursor: 'pointer', letterSpacing: '0.04em'
+                  }}
+                >
+                  GEMINI (BEST)
+                </button>
+              )}
+              {finalTranscript && (
+                <button
+                  onClick={() => setTranscriptVersion('whisper')}
+                  style={{
+                    padding: '3px 10px',
+                    background: transcriptVersion === 'whisper' ? 'var(--positive-subtle)' : 'var(--surface-3)',
+                    border: `1px solid ${transcriptVersion === 'whisper' ? 'rgba(92,181,131,0.2)' : 'var(--border-1)'}`,
+                    borderRadius: 'var(--radius-full)', fontSize: 9, fontWeight: 700,
+                    color: transcriptVersion === 'whisper' ? 'var(--positive)' : 'var(--ink-4)',
+                    cursor: 'pointer', letterSpacing: '0.04em'
+                  }}
+                >
+                  WHISPER
+                </button>
+              )}
               <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowFinalTranscript(!showFinalTranscript) }}
+                onClick={() => setTranscriptVersion('live')}
                 style={{
-                  padding: '2px 8px', background: showFinalTranscript ? 'var(--positive-subtle)' : 'var(--surface-3)',
-                  border: `1px solid ${showFinalTranscript ? 'rgba(92,181,131,0.2)' : 'var(--border-1)'}`,
+                  padding: '3px 10px',
+                  background: transcriptVersion === 'live' ? 'var(--surface-4)' : 'var(--surface-3)',
+                  border: `1px solid ${transcriptVersion === 'live' ? 'var(--ink-4)' : 'var(--border-1)'}`,
                   borderRadius: 'var(--radius-full)', fontSize: 9, fontWeight: 700,
-                  color: showFinalTranscript ? 'var(--positive)' : 'var(--ink-4)',
+                  color: transcriptVersion === 'live' ? 'var(--ink-2)' : 'var(--ink-4)',
                   cursor: 'pointer', letterSpacing: '0.04em'
                 }}
               >
-                {showFinalTranscript ? 'FINAL' : 'LIVE'}
+                LIVE (ORIGINAL)
               </button>
-            )}
-          </summary>
+            </div>
+          )}
+
           <div style={{ padding: 'var(--sp-4)', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)', marginTop: 'var(--sp-2)', maxHeight: 400, overflow: 'auto' }}>
-            {showFinalTranscript && finalTranscript ? (
+            {transcriptVersion === 'gemini' && geminiTranscript ? (
+              (geminiTranscript as any[]).map((seg: any, i: number) => (
+                <div key={seg.id || i} style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
+                  {seg.startSeconds != null && (
+                    <span style={{ color: 'var(--accent)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', marginRight: 8 }}>
+                      {Math.floor(seg.startSeconds / 60)}:{String(Math.floor(seg.startSeconds % 60)).padStart(2, '0')}
+                    </span>
+                  )}
+                  {seg.speaker && seg.speaker !== 'mixed' && (
+                    <span style={{ color: 'var(--purple)', fontSize: 'var(--text-xs)', fontWeight: 600, marginRight: 6 }}>{seg.speaker}:</span>
+                  )}
+                  <span style={{ color: 'var(--ink-1)' }}>{seg.text}</span>
+                </div>
+              ))
+            ) : transcriptVersion === 'whisper' && finalTranscript ? (
               (finalTranscript as any[]).map((seg: any, i: number) => (
                 <div key={seg.id || i} style={{ marginBottom: 'var(--sp-2)', fontSize: 'var(--text-sm)' }}>
                   {seg.startSeconds != null && (

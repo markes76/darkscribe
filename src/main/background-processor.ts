@@ -115,60 +115,292 @@ Return ONLY the JSON object. All fields at the top level.`
   }
 }
 
-async function runGeminiAnalysis(audioFilePath: string): Promise<Record<string, unknown> | null> {
+interface GeminiResult {
+  transcription: string | null      // Corrected transcript text
+  summary: Record<string, unknown> | null  // Structured summary
+  voiceInsights: Record<string, unknown> | null  // Sentiment/voice analysis
+}
+
+const GEMINI_TRANSCRIPTION_PROMPT = `You are a professional transcription service. You will listen to this audio recording and perform THREE tasks.
+
+TASK 1 — CORRECTED TRANSCRIPTION:
+Listen to the entire recording carefully. Produce a complete, accurate transcription of everything that was said.
+
+Rules:
+- Transcribe in the EXACT language that was spoken. If the speaker spoke English, transcribe in English. If they spoke Hebrew, transcribe in Hebrew. If they switched between languages, transcribe each segment in the language it was spoken in.
+- Do NOT translate anything. Do NOT change the language of what was said.
+- Include timestamps at the start of each paragraph or natural speech segment (format: [HH:MM:SS])
+- Fix any words that a real-time transcription system might have gotten wrong (proper nouns, technical terms, numbers, acronyms)
+- If multiple speakers are detectable, label them (Speaker 1, Speaker 2, etc.)
+- If a word is genuinely unclear in the audio, mark it as [inaudible] rather than guessing
+- Preserve the speaker's actual words. Do not paraphrase, summarize, or clean up their grammar. You may omit filler words like "um" or "uh" but keep the actual content intact.
+
+TASK 2 — STRUCTURED SUMMARY:
+After the transcription, provide a structured summary with:
+- Overview (2-3 sentences)
+- Key Topics discussed (list)
+- Action Items (format: @PersonName: task description, due: date if mentioned)
+- Decisions Made (list)
+- Follow-ups needed (list)
+
+Write the summary in the SAME LANGUAGE as the conversation. Do not translate.
+
+TASK 3 — VOICE INSIGHTS:
+Provide brief voice/sentiment analysis:
+- Overall tone
+- Energy level
+- Speaker dynamics
+- Key emotional moments
+
+FORMAT YOUR RESPONSE EXACTLY AS:
+---TRANSCRIPTION---
+[your corrected transcription here]
+---SUMMARY---
+[your structured summary here]
+---VOICE_INSIGHTS---
+[your voice insights here]
+---END---`
+
+function parseGeminiResponse(text: string): { transcription: string; summary: string; voiceInsights: string } {
+  const txMatch = text.match(/---TRANSCRIPTION---\s*([\s\S]*?)\s*---SUMMARY---/)
+  const sumMatch = text.match(/---SUMMARY---\s*([\s\S]*?)\s*---VOICE_INSIGHTS---/)
+  const viMatch = text.match(/---VOICE_INSIGHTS---\s*([\s\S]*?)\s*---END---/)
+
+  return {
+    transcription: txMatch?.[1]?.trim() || '',
+    summary: sumMatch?.[1]?.trim() || '',
+    voiceInsights: viMatch?.[1]?.trim() || ''
+  }
+}
+
+function parseGeminiTranscriptToSegments(text: string): Array<{ id: string; speaker: string; text: string; isFinal: boolean; timestamp: number; startSeconds: number }> {
+  if (!text) return []
+
+  const segments: Array<{ id: string; speaker: string; text: string; isFinal: boolean; timestamp: number; startSeconds: number }> = []
+  // Split on timestamp markers like [00:01:30] or [HH:MM:SS]
+  const parts = text.split(/\[(\d{1,2}:\d{2}:\d{2})\]/)
+
+  let currentTime = 0
+  for (let i = 1; i < parts.length; i += 2) {
+    const timeStr = parts[i]
+    const content = parts[i + 1]?.trim()
+    if (!content) continue
+
+    // Parse HH:MM:SS
+    const timeParts = timeStr.split(':').map(Number)
+    currentTime = (timeParts[0] || 0) * 3600 + (timeParts[1] || 0) * 60 + (timeParts[2] || 0)
+
+    // Detect speaker label (Speaker 1:, Speaker 2:, etc.)
+    const speakerMatch = content.match(/^(Speaker\s*\d+)\s*:\s*/)
+    const speaker = speakerMatch ? speakerMatch[1] : 'mixed'
+    const spokenText = speakerMatch ? content.slice(speakerMatch[0].length).trim() : content
+
+    if (spokenText) {
+      segments.push({
+        id: `gemini-${i}`,
+        speaker,
+        text: spokenText,
+        isFinal: true,
+        timestamp: Date.now() - currentTime * 1000,
+        startSeconds: currentTime
+      })
+    }
+  }
+
+  // If no timestamp markers found, treat the whole text as one segment
+  if (segments.length === 0 && text.trim()) {
+    segments.push({
+      id: 'gemini-0',
+      speaker: 'mixed',
+      text: text.trim(),
+      isFinal: true,
+      timestamp: Date.now(),
+      startSeconds: 0
+    })
+  }
+
+  return segments
+}
+
+// Split a WAV file into chunks of maxDurationSec seconds
+// Returns an array of { buffer, offsetSeconds }
+function chunkWavFile(filePath: string, maxDurationSec: number = 1800): Array<{ buffer: Buffer; offsetSeconds: number }> {
+  const fullBuffer = fs.readFileSync(filePath)
+
+  // Parse WAV header to get sample rate and bit depth
+  const sampleRate = fullBuffer.readUInt32LE(24)
+  const bitsPerSample = fullBuffer.readUInt16LE(34)
+  const numChannels = fullBuffer.readUInt16LE(22)
+  const bytesPerSample = (bitsPerSample / 8) * numChannels
+  const dataOffset = 44  // Standard WAV header size
+  const totalDataBytes = fullBuffer.length - dataOffset
+  const totalDuration = totalDataBytes / (sampleRate * bytesPerSample)
+
+  if (totalDuration <= maxDurationSec) {
+    return [{ buffer: fullBuffer, offsetSeconds: 0 }]
+  }
+
+  const chunks: Array<{ buffer: Buffer; offsetSeconds: number }> = []
+  const chunkDataBytes = maxDurationSec * sampleRate * bytesPerSample
+
+  for (let offset = 0; offset < totalDataBytes; offset += chunkDataBytes) {
+    const end = Math.min(offset + chunkDataBytes, totalDataBytes)
+    const chunkData = fullBuffer.subarray(dataOffset + offset, dataOffset + end)
+    const chunkSize = chunkData.length
+
+    // Build a new WAV header for this chunk
+    const header = Buffer.alloc(44)
+    fullBuffer.copy(header, 0, 0, 44)  // Copy original header
+    header.writeUInt32LE(chunkSize + 36, 4)   // RIFF chunk size
+    header.writeUInt32LE(chunkSize, 40)        // data chunk size
+
+    chunks.push({
+      buffer: Buffer.concat([header, chunkData]),
+      offsetSeconds: offset / (sampleRate * bytesPerSample)
+    })
+  }
+
+  console.log(`[Gemini] Split ${Math.round(totalDuration)}s recording into ${chunks.length} chunks`)
+  return chunks
+}
+
+async function callGeminiWithAudio(base64Audio: string, geminiKey: string, prompt: string): Promise<string | null> {
+  const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: 'audio/wav', data: base64Audio } },
+          { text: prompt }
+        ]
+      }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 16384 }
+    })
+  })
+
+  if (!resp.ok) {
+    console.error('[Gemini] API error:', resp.status, await resp.text().catch(() => ''))
+    return null
+  }
+
+  const data = await resp.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || null
+}
+
+async function runGeminiAnalysis(audioFilePath: string): Promise<GeminiResult> {
   const geminiKey = await keychainGet('gemini-api-key')
-  if (!geminiKey) return null
+  if (!geminiKey) return { transcription: null, summary: null, voiceInsights: null }
 
   try {
-    // Read audio file and encode as base64
-    const audioBuffer = fs.readFileSync(audioFilePath)
-    const base64Audio = audioBuffer.toString('base64')
+    const chunks = chunkWavFile(audioFilePath, 1800)  // 30-minute chunks
 
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+    if (chunks.length === 1) {
+      // Single chunk — straightforward
+      const base64Audio = chunks[0].buffer.toString('base64')
+      const responseText = await callGeminiWithAudio(base64Audio, geminiKey, GEMINI_TRANSCRIPTION_PROMPT)
+      if (!responseText) return { transcription: null, summary: null, voiceInsights: null }
+
+      const parsed = parseGeminiResponse(responseText)
+      return {
+        transcription: parsed.transcription || null,
+        summary: parsed.summary ? { raw: parsed.summary } : null,
+        voiceInsights: parsed.voiceInsights ? { raw: parsed.voiceInsights } : null
+      }
+    }
+
+    // Multiple chunks — transcribe each, then summarize combined
+    console.log(`[Gemini] Processing ${chunks.length} audio chunks...`)
+    const allTranscriptions: string[] = []
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]
+      console.log(`[Gemini] Processing chunk ${i + 1}/${chunks.length} (offset: ${Math.round(chunk.offsetSeconds)}s)`)
+
+      const base64Audio = chunk.buffer.toString('base64')
+      const chunkPrompt = `You are a professional transcription service. Listen to this audio segment and produce a complete, accurate transcription.
+
+Rules:
+- Transcribe in the EXACT language that was spoken. Do NOT translate.
+- Include timestamps at the start of each paragraph (format: [HH:MM:SS])
+- IMPORTANT: This segment starts at offset ${formatTimeHMS(chunk.offsetSeconds)} in the full recording. Adjust all timestamps accordingly.
+- Fix any words that a real-time transcription system might have gotten wrong
+- If multiple speakers are detectable, label them (Speaker 1, Speaker 2, etc.)
+- If a word is genuinely unclear, mark it as [inaudible]
+- Preserve the speaker's actual words. You may omit filler words.
+
+Output ONLY the transcription text with timestamps. No summary or analysis.`
+
+      const chunkResult = await callGeminiWithAudio(base64Audio, geminiKey, chunkPrompt)
+      if (chunkResult) allTranscriptions.push(chunkResult.trim())
+    }
+
+    const combinedTranscription = allTranscriptions.join('\n\n')
+
+    // Now get summary + voice insights from a final pass with the full transcript
+    const summaryPrompt = `Based on this transcription of an audio recording, provide:
+
+TASK 1 — STRUCTURED SUMMARY:
+- Overview (2-3 sentences)
+- Key Topics discussed (list)
+- Action Items (format: @PersonName: task description, due: date if mentioned)
+- Decisions Made (list)
+- Follow-ups needed (list)
+
+Write the summary in the SAME LANGUAGE as the transcription. Do not translate.
+
+TASK 2 — VOICE INSIGHTS:
+- Overall tone
+- Energy level
+- Speaker dynamics
+- Key emotional moments
+
+FORMAT YOUR RESPONSE EXACTLY AS:
+---SUMMARY---
+[your structured summary here]
+---VOICE_INSIGHTS---
+[your voice insights here]
+---END---
+
+TRANSCRIPTION:
+${combinedTranscription.substring(0, 30000)}`
+
+    // Use text-only API call for summary (no audio needed)
+    const summaryResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [
-            {
-              inline_data: {
-                mime_type: 'audio/wav',
-                data: base64Audio
-              }
-            },
-            {
-              text: `Analyze this audio recording and return a JSON object with:
-- "overallTone": string — overall emotional tone of the conversation
-- "energyLevel": string — energy level throughout
-- "speakerDynamics": string — who dominated, how they interacted
-- "emotionalShifts": array of {timestamp_approx: string, description: string}
-- "confidenceIndicators": array of {statement: string, confidence: "high"|"medium"|"low"}
-Write your analysis in the same language the conversation was conducted in. Do not translate.
-Return ONLY valid JSON.`
-            }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.3,
-          responseMimeType: 'application/json'
-        }
+        contents: [{ parts: [{ text: summaryPrompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
       })
     })
 
-    if (!resp.ok) {
-      console.error('[Gemini] API error:', resp.status)
-      return null
+    let summary: Record<string, unknown> | null = null
+    let voiceInsights: Record<string, unknown> | null = null
+
+    if (summaryResp.ok) {
+      const sData = await summaryResp.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+      const sText = sData.candidates?.[0]?.content?.parts?.[0]?.text
+      if (sText) {
+        const sumMatch = sText.match(/---SUMMARY---\s*([\s\S]*?)\s*---VOICE_INSIGHTS---/)
+        const viMatch = sText.match(/---VOICE_INSIGHTS---\s*([\s\S]*?)\s*---END---/)
+        if (sumMatch?.[1]) summary = { raw: sumMatch[1].trim() }
+        if (viMatch?.[1]) voiceInsights = { raw: viMatch[1].trim() }
+      }
     }
 
-    const data = await resp.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!text) return null
-
-    return JSON.parse(text)
+    return { transcription: combinedTranscription, summary, voiceInsights }
   } catch (e) {
     console.error('[Gemini] Analysis failed:', (e as Error).message)
-    return null
+    return { transcription: null, summary: null, voiceInsights: null }
   }
+}
+
+function formatTimeHMS(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
 function formatTime(seconds: number): string {
@@ -183,7 +415,9 @@ function buildVaultSummaryMarkdown(
   sessionName?: string,
   participants?: string,
   processedWith?: string,
-  geminiInsights?: Record<string, unknown> | null
+  geminiInsights?: Record<string, unknown> | null,
+  geminiRawTranscript?: string | null,
+  transcriptVersion?: string
 ): string {
   const date = new Date().toISOString().split('T')[0]
   const durationMin = Math.round(whisperResult.duration / 60)
@@ -198,7 +432,7 @@ function buildVaultSummaryMarkdown(
     `duration: "${durationMin}min"`,
     `recording_status: "available"`,
     `recording_duration: "${durationMin}min"`,
-    `transcript_version: "final"`,
+    `transcript_version: "${transcriptVersion || 'final'}"`,
     `processing_status: "completed"`,
     `processed_with: "${processedWith || 'whisper-1 + gpt-4o'}"`,
     `processed_at: "${new Date().toISOString()}"`,
@@ -261,8 +495,11 @@ function buildVaultSummaryMarkdown(
     if ((geminiInsights as any).speakerDynamics) lines.push(`**Dynamics:** ${(geminiInsights as any).speakerDynamics}`, '')
   }
 
-  // Full Transcript
-  if (whisperResult.segments.length > 0) {
+  // Full Transcript — use Gemini corrected version when available, else Whisper
+  if (geminiRawTranscript) {
+    lines.push('## Full Transcript (Gemini Corrected)', '')
+    lines.push(geminiRawTranscript, '')
+  } else if (whisperResult.segments.length > 0) {
     lines.push('## Full Transcript', '')
     for (const seg of whisperResult.segments) {
       const time = formatTime(seg.start)
@@ -304,6 +541,34 @@ function buildVaultTranscriptMarkdown(
   }
 
   return lines.join('\n')
+}
+
+function buildVaultGeminiTranscriptMarkdown(
+  geminiRawTranscript: string,
+  summary: Record<string, unknown>,
+  sessionName?: string,
+  participants?: string,
+  processedWith?: string
+): string {
+  const date = new Date().toISOString().split('T')[0]
+
+  const lines: string[] = [
+    '---',
+    'tags: [call, transcript]',
+    `date: "${date}"`,
+    sessionName ? `title: "${sessionName}"` : '',
+    `transcript_version: "gemini"`,
+    `processed_with: "${processedWith || 'gemini-2.0-flash'}"`,
+    `processed_at: "${new Date().toISOString()}"`,
+    '---',
+    '',
+    '## Transcript (Gemini Corrected)',
+    '',
+    geminiRawTranscript,
+    ''
+  ]
+
+  return lines.filter(l => l !== undefined).join('\n')
 }
 
 export async function startBackgroundProcessing(
@@ -390,15 +655,44 @@ async function processSession(job: ProcessingJob): Promise<void> {
     // The improved version lives in summary_final.json only.
     // The renderer reads summary_final.json when available.
 
-    // Step 3: Optional Gemini analysis
+    // Step 3: Optional Gemini analysis (transcription + summary + voice insights)
     job.status = 'gemini'
-    const geminiInsights = await runGeminiAnalysis(audioFilePath)
-    if (geminiInsights) {
+    notifyRenderer('processing:progress', { sessionId, message: 'Gemini analysis...', pct: 90 })
+    const geminiResult = await runGeminiAnalysis(audioFilePath)
+
+    let geminiInsights: Record<string, unknown> | null = null
+
+    if (geminiResult.transcription) {
+      // Save Gemini corrected transcript
+      const geminiSegments = parseGeminiTranscriptToSegments(geminiResult.transcription)
+      fs.writeFileSync(
+        path.join(sessDir, 'transcript_gemini.json'),
+        JSON.stringify(geminiSegments, null, 2)
+      )
+      // Also save raw text version for vault
+      fs.writeFileSync(
+        path.join(sessDir, 'transcript_gemini_raw.txt'),
+        geminiResult.transcription
+      )
+      console.log(`[BgProcessor] Gemini transcript saved: ${geminiSegments.length} segments`)
+    }
+
+    if (geminiResult.voiceInsights) {
+      geminiInsights = geminiResult.voiceInsights
       fs.writeFileSync(
         path.join(sessDir, 'gemini_insights.json'),
         JSON.stringify(geminiInsights, null, 2)
       )
-      // Merge voice insights into the final summary file (not live summary.json)
+    }
+
+    if (geminiResult.summary) {
+      // Merge Gemini summary + voice insights into final summary
+      const mergedSummary = { ...summary, geminiSummary: geminiResult.summary, voiceInsights: geminiInsights }
+      fs.writeFileSync(
+        path.join(sessDir, 'summary_final.json'),
+        JSON.stringify(mergedSummary, null, 2)
+      )
+    } else if (geminiInsights) {
       const mergedSummary = { ...summary, voiceInsights: geminiInsights }
       fs.writeFileSync(
         path.join(sessDir, 'summary_final.json'),
@@ -418,13 +712,22 @@ async function processSession(job: ProcessingJob): Promise<void> {
             const prefix = config.vault_subfolder || ''
             const vp = (p: string) => prefix ? `${prefix}/${p}` : p
 
-            // Build improved summary markdown
+            // Determine best transcript version for vault
+            const hasGeminiTranscript = geminiResult.transcription != null
+            const processedWith = hasGeminiTranscript
+              ? 'whisper-1 + gpt-4o + gemini-2.0-flash'
+              : geminiInsights ? 'whisper-1 + gpt-4o + gemini' : 'whisper-1 + gpt-4o'
+            const transcriptVersion = hasGeminiTranscript ? 'gemini' : 'whisper'
+
+            // Build vault markdown — use Gemini raw transcript for the full transcript section if available
+            const geminiRawText = hasGeminiTranscript ? geminiResult.transcription! : null
             const finalSummary = summary as Record<string, unknown>
-            const processedWith = geminiInsights ? 'whisper-1 + gpt-4o + gemini' : 'whisper-1 + gpt-4o'
-            const summaryMd = buildVaultSummaryMarkdown(finalSummary, whisperResult, sessionName, participants, processedWith, geminiInsights)
+            const summaryMd = buildVaultSummaryMarkdown(finalSummary, whisperResult, sessionName, participants, processedWith, geminiInsights, geminiRawText, transcriptVersion)
 
             // Build improved transcript markdown
-            const transcriptMd = buildVaultTranscriptMarkdown(whisperResult, finalSummary, sessionName, participants, processedWith)
+            const transcriptMd = hasGeminiTranscript
+              ? buildVaultGeminiTranscriptMarkdown(geminiResult.transcription!, finalSummary, sessionName, participants, processedWith)
+              : buildVaultTranscriptMarkdown(whisperResult, finalSummary, sessionName, participants, processedWith)
 
             // Update the vault notes
             const summaryPath = lastCall.vaultNotePath
@@ -504,5 +807,38 @@ export function setupBackgroundProcessorIpc(): void {
     const geminiPath = path.join(sessDir, 'gemini_insights.json')
     if (!fs.existsSync(geminiPath)) return null
     try { return JSON.parse(fs.readFileSync(geminiPath, 'utf-8')) } catch { return null }
+  })
+
+  // Load Gemini transcript
+  ipcMain.handle('processing:load-gemini-transcript', (_e, sessionId: string) => {
+    const sessDir = path.join(app.getPath('userData'), 'sessions', sessionId)
+    const geminiPath = path.join(sessDir, 'transcript_gemini.json')
+    if (!fs.existsSync(geminiPath)) return null
+    try { return JSON.parse(fs.readFileSync(geminiPath, 'utf-8')) } catch { return null }
+  })
+
+  // Load best available transcript (gemini > whisper/final > live)
+  ipcMain.handle('processing:load-best-transcript', (_e, sessionId: string) => {
+    const sessDir = path.join(app.getPath('userData'), 'sessions', sessionId)
+
+    // Try Gemini first
+    const geminiPath = path.join(sessDir, 'transcript_gemini.json')
+    if (fs.existsSync(geminiPath)) {
+      try { return { data: JSON.parse(fs.readFileSync(geminiPath, 'utf-8')), version: 'gemini' } } catch {}
+    }
+
+    // Then Whisper
+    const finalPath = path.join(sessDir, 'transcript_final.json')
+    if (fs.existsSync(finalPath)) {
+      try { return { data: JSON.parse(fs.readFileSync(finalPath, 'utf-8')), version: 'whisper' } } catch {}
+    }
+
+    // Then live
+    const livePath = path.join(sessDir, 'transcript.json')
+    if (fs.existsSync(livePath)) {
+      try { return { data: JSON.parse(fs.readFileSync(livePath, 'utf-8')), version: 'live' } } catch {}
+    }
+
+    return null
   })
 }
